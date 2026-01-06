@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { ShoppingBag, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -86,9 +87,11 @@ const ProductCard = ({ product, index }: ProductCardProps) => {
         <p className="text-xs uppercase tracking-wider text-muted-foreground">
           {product.category}
         </p>
-        <h3 className="font-medium text-foreground group-hover:text-gold transition-colors duration-300">
-          {product.name}
-        </h3>
+        <Link to={`/product/${product.id}`}>
+          <h3 className="font-medium text-foreground group-hover:text-gold transition-colors duration-300">
+            {product.name}
+          </h3>
+        </Link>
         <p className="text-lg font-semibold text-gradient-gold">
           {formatPrice(product.price)}
         </p>

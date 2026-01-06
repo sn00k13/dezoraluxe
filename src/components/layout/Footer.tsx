@@ -60,11 +60,8 @@ const Footer = () => {
           
           {/* Bottom Bar */}
           <div className="py-6 border-t border-border flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-muted-foreground">
-            <p>© 2025 NOIR. All rights reserved.</p>
-            <div className="flex gap-6">
-              <span>🇺🇸 USD</span>
-              <span>Free shipping on orders over $200</span>
-            </div>
+            <p>© 2026 DEZORA LUXE. All rights reserved.</p>
+           
           </div>
         </div>
       </footer>

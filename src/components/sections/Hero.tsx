@@ -32,7 +32,7 @@ const Hero = () => {
                 <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
               </Button>
               <Button variant="hero-outline" size="xl">
-                Explore Lookbook
+                Explore Dezora Luxe
               </Button>
             </div>
             

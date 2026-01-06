@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { ArrowUpRight } from "lucide-react";
 
 const categories = [
@@ -35,21 +36,21 @@ const Categories = () => {
               Shop by Category
             </h2>
           </div>
-          <a
-            href="#"
+          <Link
+            to="/categories"
             className="inline-flex items-center gap-2 text-sm font-medium text-gold hover:text-gold-muted transition-colors group"
           >
             View All Categories
             <span className="group-hover:translate-x-1 transition-transform">→</span>
-          </a>
+          </Link>
         </div>
         
         {/* Categories Grid */}
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
           {categories.map((category, index) => (
-            <a
+            <Link
               key={category.name}
-              href="#"
+              to={`/collections/${category.name.toLowerCase()}`}
               className="group relative h-64 overflow-hidden rounded-sm opacity-0 animate-fade-up"
               style={{ animationDelay: `${index * 100}ms`, animationFillMode: "forwards" }}
             >
@@ -74,7 +75,7 @@ const Categories = () => {
               
               {/* Hover overlay */}
               <div className="absolute inset-0 bg-gold/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-            </a>
+            </Link>
           ))}
         </div>
       </div>

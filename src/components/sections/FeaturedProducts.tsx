@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import ProductCard from "@/components/ProductCard";
 import productWatch from "@/assets/product-watch.jpg";
 import productBag from "@/assets/product-bag.jpg";
@@ -59,13 +60,13 @@ const FeaturedProducts = () => {
         
         {/* View All Link */}
         <div className="text-center mt-12">
-          <a
-            href="#"
+          <Link
+            to="/products"
             className="inline-flex items-center gap-2 text-sm font-medium text-gold hover:text-gold-muted transition-colors group"
           >
             View All Products
             <span className="group-hover:translate-x-1 transition-transform">→</span>
-          </a>
+          </Link>
         </div>
       </div>
     </section>
