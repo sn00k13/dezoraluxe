@@ -19,24 +19,20 @@ export default defineConfig(({ mode }) => ({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          // Don't manually chunk React/React-DOM - let Vite handle them automatically
-          // This prevents "createContext" errors from React not being available
+          // Bundle React, React-DOM, and React Router together
+          // This prevents "SECRET_INTERNALS" errors from React Router loading before React
           if (id.includes('node_modules')) {
-            // Explicitly exclude React and React-DOM from manual chunking
-            // Vite will handle them automatically to ensure proper loading order
+            // Bundle React, React-DOM, and React Router together
             if (
               id.includes('/react/') || 
               id.includes('/react-dom/') || 
               id.includes('react/jsx-runtime') ||
+              id.includes('react-router') ||
               id === 'react' ||
               id === 'react-dom'
             ) {
-              // Don't return anything - let Vite handle React automatically
-              return;
-            }
-            // React Router can be separate
-            if (id.includes('react-router')) {
-              return 'router-vendor';
+              // Bundle React ecosystem together to ensure proper loading order
+              return 'react-vendor';
             }
             // Large UI libraries
             if (id.includes('@radix-ui')) {
@@ -79,7 +75,7 @@ export default defineConfig(({ mode }) => ({
     },
   },
   optimizeDeps: {
-    include: ['react', 'react-dom', 'react/jsx-runtime'],
+    include: ['react', 'react-dom', 'react/jsx-runtime', 'react-router-dom'],
     esbuildOptions: {
       target: 'es2020',
     },
