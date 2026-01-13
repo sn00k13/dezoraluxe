@@ -34,7 +34,8 @@ export default defineConfig(({ mode }) => ({
               // Bundle React ecosystem together to ensure proper loading order
               return 'react-vendor';
             }
-            // Large UI libraries
+            // Large UI libraries - bundle Radix UI separately
+            // This ensures primitives are available before components try to access displayName
             if (id.includes('@radix-ui')) {
               return 'ui-vendor';
             }
@@ -49,10 +50,9 @@ export default defineConfig(({ mode }) => ({
               return 'vendor';
             }
           }
-          // Admin pages (large dashboard)
-          if (id.includes('/admin/')) {
-            return 'admin';
-          }
+          // Don't manually chunk admin - let Vite handle it to ensure proper dependency loading
+          // This prevents displayName errors from UI components loading before Radix primitives
+          // Admin pages will be code-split automatically via React.lazy() in App.tsx
           // Auth pages
           if (id.includes('/SignIn') || id.includes('/SignUp') || id.includes('/AuthCallback')) {
             return 'auth';
