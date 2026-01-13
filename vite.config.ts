@@ -19,11 +19,26 @@ export default defineConfig(({ mode }) => ({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          // Vendor chunks
+          // Don't manually chunk React/React-DOM - let Vite handle them automatically
+          // This prevents "createContext" errors from React not being available
           if (id.includes('node_modules')) {
-            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
-              return 'react-vendor';
+            // Explicitly exclude React and React-DOM from manual chunking
+            // Vite will handle them automatically to ensure proper loading order
+            if (
+              id.includes('/react/') || 
+              id.includes('/react-dom/') || 
+              id.includes('react/jsx-runtime') ||
+              id === 'react' ||
+              id === 'react-dom'
+            ) {
+              // Don't return anything - let Vite handle React automatically
+              return;
             }
+            // React Router can be separate
+            if (id.includes('react-router')) {
+              return 'router-vendor';
+            }
+            // Large UI libraries
             if (id.includes('@radix-ui')) {
               return 'ui-vendor';
             }
@@ -33,8 +48,10 @@ export default defineConfig(({ mode }) => ({
             if (id.includes('react-hook-form') || id.includes('@hookform')) {
               return 'form-vendor';
             }
-            // Other node_modules
-            return 'vendor';
+            // Other large node_modules
+            if (id.includes('lucide-react') || id.includes('recharts') || id.includes('sonner')) {
+              return 'vendor';
+            }
           }
           // Admin pages (large dashboard)
           if (id.includes('/admin/')) {
@@ -56,5 +73,15 @@ export default defineConfig(({ mode }) => ({
       },
     },
     chunkSizeWarningLimit: 1000, // Increase limit to 1MB for better chunking
+    commonjsOptions: {
+      include: [/node_modules/],
+      transformMixedEsModules: true,
+    },
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react/jsx-runtime'],
+    esbuildOptions: {
+      target: 'es2020',
+    },
   },
 }));
