@@ -16,7 +16,7 @@ const values = [
   {
     icon: Heart,
     title: "Sustainability",
-    description: "Committed to ethical practices and sustainable materials, ensuring a better future for generations to come.",
+    description: "Committed to ethical practices and sustainable materials, ensuring a better future for generations to come always.",
   },
   {
     icon: Sparkles,
