@@ -46,32 +46,32 @@ interface DeliveryMethod {
 
 const deliveryMethods: DeliveryMethod[] = [
 	{
-		id: 'standard',
-		name: 'Standard Delivery',
-		company: 'FedEx',
-		price: 15,
-		estimatedDays: '5-7 business days',
+		id: 'gig',
+		name: 'GIG Logistics',
+		company: 'GIG Logistics',
+		price: 8000,
+		estimatedDays: 'Standard delivery',
 	},
 	{
-		id: 'express',
-		name: 'Express Delivery',
-		company: 'DHL',
-		price: 35,
-		estimatedDays: '2-3 business days',
+		id: 'guo',
+		name: 'GUO Logistics',
+		company: 'GUO Logistics',
+		price: 4000,
+		estimatedDays: 'Standard delivery',
 	},
 	{
-		id: 'overnight',
-		name: 'Overnight Delivery',
-		company: 'UPS',
-		price: 75,
-		estimatedDays: '1 business day',
+		id: 'abuja',
+		name: '*Locations Within Abuja',
+		company: 'Local Delivery',
+		price: 3000,
+		estimatedDays: 'Within Abuja',
 	},
 	{
-		id: 'economy',
-		name: 'Economy Delivery',
-		company: 'USPS',
-		price: 8,
-		estimatedDays: '7-10 business days',
+		id: 'pickup',
+		name: 'Pick-Up (Free)',
+		company: 'Store Pickup',
+		price: 0,
+		estimatedDays: 'available within Abuja',
 	},
 ];
 
@@ -102,9 +102,9 @@ const Checkout = () => {
 		city: '',
 		state: '',
 		zipCode: '',
-		country: 'United States',
+		country: 'Nigeria',
 	});
-	const [selectedDelivery, setSelectedDelivery] = useState<string>('standard');
+	const [selectedDelivery, setSelectedDelivery] = useState<string>('gig');
 	const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 	const [savedAddresses, setSavedAddresses] = useState<ShippingAddress[]>([]);
 	const [selectedAddressId, setSelectedAddressId] = useState<string | null>(
@@ -189,8 +189,7 @@ const Checkout = () => {
 			!shippingInfo.lastName ||
 			!shippingInfo.address ||
 			!shippingInfo.city ||
-			!shippingInfo.state ||
-			!shippingInfo.zipCode
+			!shippingInfo.state
 		) {
 			toast.error('Please fill in all required fields');
 			return;
@@ -351,8 +350,7 @@ const Checkout = () => {
 			!shippingInfo.phone ||
 			!shippingInfo.address ||
 			!shippingInfo.city ||
-			!shippingInfo.state ||
-			!shippingInfo.zipCode
+			!shippingInfo.state
 		) {
 			toast.error('Please fill in all required shipping fields');
 			return;
@@ -516,7 +514,7 @@ const Checkout = () => {
 						{
 							display_name: 'Shipping Address',
 							variable_name: 'shipping_address',
-							value: `${shippingInfo.address}, ${shippingInfo.city}, ${shippingInfo.state} ${shippingInfo.zipCode}`,
+							value: `${shippingInfo.address}, ${shippingInfo.city}, ${shippingInfo.state}`,
 						},
 						{
 							display_name: 'Delivery Method',
@@ -808,10 +806,9 @@ const Checkout = () => {
 																						<p className="text-sm text-muted-foreground">
 																							{address.address}
 																						</p>
-																						<p className="text-sm text-muted-foreground">
-																							{address.city}, {address.state}{' '}
-																							{address.zip_code}
-																						</p>
+																		<p className="text-sm text-muted-foreground">
+																			{address.city}, {address.state}
+																		</p>
 																						<p className="text-sm text-muted-foreground">
 																							{address.country}
 																						</p>
@@ -844,7 +841,7 @@ const Checkout = () => {
 																			city: '',
 																			state: '',
 																			zipCode: '',
-																			country: 'United States',
+																			country: 'Nigeria',
 																		});
 																	}}
 																>
@@ -959,7 +956,7 @@ const Checkout = () => {
 																/>
 															</div>
 
-															<div className="grid md:grid-cols-3 gap-4">
+															<div className="grid md:grid-cols-2 gap-4">
 																<div className="space-y-2">
 																	<Label htmlFor="city">
 																		City <span className="text-red-500">*</span>
@@ -983,52 +980,16 @@ const Checkout = () => {
 																		required
 																	/>
 																</div>
-																<div className="space-y-2">
-																	<Label htmlFor="zipCode">
-																		Zip Code{' '}
-																		<span className="text-red-500">*</span>
-																	</Label>
-																	<Input
-																		id="zipCode"
-																		value={shippingInfo.zipCode}
-																		onChange={handleShippingChange}
-																		required
-																	/>
-																</div>
 															</div>
 
 															<div className="space-y-2">
 																<Label htmlFor="country">Country</Label>
-																<Select
+																<Input
+																	id="country"
 																	value={shippingInfo.country}
-																	onValueChange={(value) =>
-																		setShippingInfo({
-																			...shippingInfo,
-																			country: value,
-																		})
-																	}
-																>
-																	<SelectTrigger id="country">
-																		<SelectValue />
-																	</SelectTrigger>
-																	<SelectContent>
-																		<SelectItem value="United States">
-																			United States
-																		</SelectItem>
-																		<SelectItem value="Canada">
-																			Canada
-																		</SelectItem>
-																		<SelectItem value="United Kingdom">
-																			United Kingdom
-																		</SelectItem>
-																		<SelectItem value="Australia">
-																			Australia
-																		</SelectItem>
-																		<SelectItem value="Nigeria">
-																			Nigeria
-																		</SelectItem>
-																	</SelectContent>
-																</Select>
+																	onChange={handleShippingChange}
+																	placeholder="Enter country"
+																/>
 															</div>
 
 															{user && showNewAddressForm ? (
@@ -1109,17 +1070,26 @@ const Checkout = () => {
 																<div>
 																	<p className="font-medium">{method.name}</p>
 																	<p className="text-sm text-muted-foreground">
-																		{method.company} • {method.estimatedDays}
+																		{method.estimatedDays}
 																	</p>
 																</div>
 																<p className="font-semibold text-gold">
-																	{formatPrice(method.price)}
+																	{method.price === 0 ? 'Free' : formatPrice(method.price)}
 																</p>
 															</div>
 														</Label>
 													</div>
 												))}
 											</RadioGroup>
+
+											<div className="mt-6 p-4 bg-muted/50 rounded-lg space-y-2">
+												<p className="text-sm text-muted-foreground">
+													<strong className="text-foreground">Note:</strong> Please note you might still be communicated for extra charge if you have a large volume of order.
+												</p>
+												<p className="text-sm text-muted-foreground">
+													<strong className="text-foreground">Note:</strong> Please note that you might still be communicated for extra charge if your location is far from town.
+												</p>
+											</div>
 
 											{currentStage === 'delivery' && (
 												<Button
