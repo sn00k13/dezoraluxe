@@ -1087,7 +1087,7 @@ const Checkout = () => {
 													<strong className="text-foreground">Note:</strong> Please note you might still be communicated for extra charge if you have a large volume of order.
 												</p>
 												<p className="text-sm text-muted-foreground">
-													<strong className="text-foreground">*</strong> Please note that you might still be communicated for extra charge if your location is far from town.
+													<strong className="text-foreground">*</strong> This is applicaple for locations within Abuja main city environs. You might still be communicated for extra charges if your location is farther from the main city.
 												</p>
 											</div>
 
