@@ -1084,10 +1084,10 @@ const Checkout = () => {
 
 											<div className="mt-6 p-4 bg-muted/50 rounded-lg space-y-2">
 												<p className="text-sm text-muted-foreground">
-													<strong className="text-foreground">Note:</strong> Please note you might still be communicated for extra charge if you have a large volume of order.
+													<strong className="text-foreground">Note:</strong> Extra charges may apply for higher order volumes.
 												</p>
 												<p className="text-sm text-muted-foreground">
-													<strong className="text-foreground">*:</strong> Please note that you might still be communicated for extra charge if your location is far from town.
+													<strong className="text-foreground">*</strong> This is applicaple for locations within Abuja main city environs. You might still be communicated for extra charges if your location is farther from the main city.
 												</p>
 											</div>
 
