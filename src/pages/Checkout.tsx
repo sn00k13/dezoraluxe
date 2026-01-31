@@ -318,9 +318,11 @@ const Checkout = () => {
 	const selectedDeliveryMethod =
 		deliveryMethods.find((method) => method.id === selectedDelivery) ||
 		deliveryMethods[0];
-	const shipping = locationState?.shipping ?? selectedDeliveryMethod.price;
+	// Always use the selected delivery method price (not locationState) so it updates when method changes
+	const shipping = selectedDeliveryMethod.price;
 	const tax = 0; // 0% tax
-	const total = locationState?.total ?? subtotal + shipping + tax;
+	// Always calculate total with shipping included
+	const total = subtotal + shipping + tax;
 
 	// Redirect to cart if no items
 	useEffect(() => {
@@ -442,6 +444,10 @@ const Checkout = () => {
 
 	const createOrder = async (paymentReference: string | null = null) => {
 		try {
+			// Get current user ID from Supabase session to ensure it matches RLS policy
+			const { data: { user: authUser } } = await supabase.auth.getUser();
+			const userId = authUser?.id || null;
+
 			// Generate order number using RPC function or fallback
 			let orderNumber: string;
 
@@ -454,10 +460,11 @@ const Checkout = () => {
 				}
 				orderNumber = orderNumberData;
 			} catch (error) {
-				// Fallback to manual order number generation
+				// Fallback to manual order number generation with more uniqueness
 				const year = new Date().getFullYear();
 				const timestamp = Date.now();
-				orderNumber = `ORD-${year}-${timestamp.toString().slice(-6)}`;
+				const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+				orderNumber = `ORD-${year}-${timestamp.toString().slice(-9)}-${random}`;
 			}
 
 			// Create order
@@ -473,7 +480,7 @@ const Checkout = () => {
 			const { data: orderData, error: orderError } = await supabase
 				.from('orders')
 				.insert({
-					user_id: user?.id || null,
+					user_id: userId,
 					order_number: orderNumber,
 					total_amount: total,
 					status: 'pending',
@@ -485,6 +492,7 @@ const Checkout = () => {
 				.single();
 
 			if (orderError) {
+				console.error('Error creating order:', orderError);
 				throw orderError;
 			}
 
@@ -519,6 +527,9 @@ const Checkout = () => {
 
 	const updateOrderStatus = async (orderId: string, paymentReference: string, status: string = 'processing') => {
 		try {
+			// Get current user to ensure we can update (for RLS)
+			const { data: { user: authUser } } = await supabase.auth.getUser();
+			
 			const { data, error } = await supabase
 				.from('orders')
 				.update({
@@ -531,7 +542,17 @@ const Checkout = () => {
 				.single();
 
 			if (error) {
+				console.error('Order update error details:', {
+					code: error.code,
+					message: error.message,
+					orderId,
+					authUser: authUser?.id,
+				});
 				throw error;
+			}
+
+			if (!data) {
+				throw new Error('Order update returned no data');
 			}
 
 			return data;
@@ -1302,10 +1323,10 @@ const Checkout = () => {
 											<div className="flex justify-between text-sm">
 												<span className="text-muted-foreground">Shipping</span>
 												<span>
-													{selectedDeliveryMethod && (
-														<span>
-															{formatPrice(selectedDeliveryMethod.price)}
-														</span>
+													{shipping === 0 ? (
+														<span className="text-gold">Free</span>
+													) : (
+														formatPrice(shipping)
 													)}
 												</span>
 											</div>
