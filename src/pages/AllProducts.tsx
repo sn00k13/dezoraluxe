@@ -174,7 +174,7 @@ const AllProducts = () => {
 						</div>
 
 						{loading ? (
-							<div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
+							<div className="grid grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
 								{[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
 									<div
 										key={i}
@@ -183,7 +183,7 @@ const AllProducts = () => {
 								))}
 							</div>
 						) : filteredProducts.length > 0 ? (
-							<div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
+							<div className="grid grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8">
 								{filteredProducts.map((product, index) => (
 									<ProductCard
 										key={product.id}

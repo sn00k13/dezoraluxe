@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import Navbar from '@/components/layout/NavBar';
 import Footer from '@/components/layout/Footer';
@@ -84,6 +84,8 @@ const Checkout = () => {
 		loading: cartLoading,
 		clearCart,
 	} = useCart();
+	const checkoutContentRef = useRef<HTMLDivElement>(null);
+	const isInitialMountRef = useRef(true);
 	const [currentStage, setCurrentStage] = useState<
 		'email' | 'shipping' | 'delivery' | 'payment'
 	>(user ? 'shipping' : 'email');
@@ -160,6 +162,38 @@ const Checkout = () => {
 			setIsShippingOpen(true);
 		}
 	}, [user, currentStage]);
+
+	// Scroll to top when stage changes (especially important on mobile)
+	useEffect(() => {
+		// Skip scroll on initial mount
+		if (isInitialMountRef.current) {
+			isInitialMountRef.current = false;
+			return;
+		}
+
+		// Small delay to ensure DOM has updated after stage change
+		const timer = setTimeout(() => {
+			// On mobile, always scroll to top of page to ensure all content is visible
+			// On desktop, scroll to checkout content section
+			if (window.innerWidth < 1024) {
+				// Mobile: scroll to top of page
+				window.scrollTo({
+					top: 0,
+					behavior: 'smooth',
+				});
+			} else {
+				// Desktop: scroll to checkout content section
+				if (checkoutContentRef.current) {
+					checkoutContentRef.current.scrollIntoView({
+						behavior: 'smooth',
+						block: 'start',
+					});
+				}
+			}
+		}, 150);
+
+		return () => clearTimeout(timer);
+	}, [currentStage]);
 
 	// Select a saved address
 	const selectAddress = (address: ShippingAddress) => {
@@ -586,7 +620,7 @@ const Checkout = () => {
 				</section>
 
 				{/* Checkout Content */}
-				<section className="py-16 md:py-24">
+				<section ref={checkoutContentRef} className="py-16 md:py-24">
 					<div className="container mx-auto px-6">
 						<Link
 							to="/cart"

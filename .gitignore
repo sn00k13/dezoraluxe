@@ -34,3 +34,6 @@ dist-ssr
 *_GUIDE.md
 *TROUBLESHOOTING*.md
 SETUP_SUMMARY.md
+
+# Supabase
+.supabase
