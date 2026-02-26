@@ -8,7 +8,7 @@ const getSessionId = () => {
 		return `server-${Date.now()}`;
 	}
 
-	let existing = localStorage.getItem(ANALYTICS_SESSION_KEY);
+	const existing = localStorage.getItem(ANALYTICS_SESSION_KEY);
 	if (existing) return existing;
 
 	const generated =

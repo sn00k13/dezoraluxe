@@ -45,6 +45,10 @@ interface DeliveryMethod {
 	estimatedDays: string;
 }
 
+interface ValidatedDiscountCode extends DiscountCode {
+	validation_error: string | null;
+}
+
 const deliveryMethods: DeliveryMethod[] = [
 	{
 		id: 'gig',
@@ -497,108 +501,39 @@ const Checkout = () => {
 
 		setIsApplyingDiscount(true);
 		try {
-			const { data, error } = await supabase
-				.from('discount_codes')
-				.select('*')
-				.eq('code', normalizedCode)
-				.eq('is_active', true)
-				.single();
+			const customerEmail = shippingInfo.email.trim().toLowerCase();
+			const customerPhone = shippingInfo.phone.trim();
+			const { data, error } = await supabase.rpc('validate_discount_code', {
+				p_code: normalizedCode,
+				p_customer_email: customerEmail || null,
+				p_customer_phone: customerPhone || null,
+				p_user_id: user?.id ?? null,
+			});
 
-			if (error || !data) {
+			const code = Array.isArray(data) && data.length > 0
+				? (data[0] as ValidatedDiscountCode)
+				: null;
+
+			if (error || !code) {
 				toast.error('Invalid or inactive discount code');
 				setAppliedDiscountCode(null);
 				setDiscountAmount(0);
 				return;
 			}
 
-			const code = data as DiscountCode;
-			const now = new Date();
-
-			if (code.expires_at && new Date(code.expires_at) < now) {
-				toast.error('This discount code has expired');
+			if (code.validation_error) {
+				const validationMessageMap: Record<string, string> = {
+					inactive: 'Invalid or inactive discount code',
+					expired: 'This discount code has expired',
+					usage_limit_reached: 'This discount code has reached its usage limit',
+					email_mismatch: 'This discount code is not valid for this email address',
+					phone_mismatch: 'This discount code is not valid for this phone number',
+					one_time_used: 'This code can only be used once per customer',
+				};
+				toast.error(validationMessageMap[code.validation_error] || 'Invalid discount code');
 				setAppliedDiscountCode(null);
 				setDiscountAmount(0);
 				return;
-			}
-
-			if (code.usage_limit !== null && code.times_used >= code.usage_limit) {
-				toast.error('This discount code has reached its usage limit');
-				setAppliedDiscountCode(null);
-				setDiscountAmount(0);
-				return;
-			}
-
-			const customerEmail = shippingInfo.email.trim().toLowerCase();
-			const customerPhone = shippingInfo.phone.trim();
-
-			if (
-				code.customer_email &&
-				code.customer_email.trim().toLowerCase() !== customerEmail
-			) {
-				toast.error('This discount code is not valid for this email address');
-				setAppliedDiscountCode(null);
-				setDiscountAmount(0);
-				return;
-			}
-
-			if (code.customer_phone && code.customer_phone.trim() !== customerPhone) {
-				toast.error('This discount code is not valid for this phone number');
-				setAppliedDiscountCode(null);
-				setDiscountAmount(0);
-				return;
-			}
-
-			if (code.one_time_per_user) {
-				const emailForCheck = shippingInfo.email.trim().toLowerCase();
-				const phoneForCheck = shippingInfo.phone.trim();
-
-				const { data: priorUsageByUser, error: userUsageError } = user
-					? await supabase
-							.from('orders')
-							.select('id')
-							.eq('discount_code_id', code.id)
-							.eq('user_id', user.id)
-							.limit(1)
-					: { data: null, error: null };
-
-				if (userUsageError) {
-					throw userUsageError;
-				}
-
-				let contactUsageQuery = supabase
-					.from('orders')
-					.select('id')
-					.eq('discount_code_id', code.id);
-
-				if (emailForCheck && phoneForCheck) {
-					contactUsageQuery = contactUsageQuery.or(
-						`discount_customer_email.eq.${emailForCheck},discount_customer_phone.eq.${phoneForCheck}`
-					);
-				} else if (emailForCheck) {
-					contactUsageQuery = contactUsageQuery.eq(
-						'discount_customer_email',
-						emailForCheck
-					);
-				} else if (phoneForCheck) {
-					contactUsageQuery = contactUsageQuery.eq(
-						'discount_customer_phone',
-						phoneForCheck
-					);
-				}
-
-				const { data: priorUsageByContact, error: contactUsageError } =
-					await contactUsageQuery.limit(1);
-
-				if (contactUsageError) {
-					throw contactUsageError;
-				}
-
-				if ((priorUsageByUser && priorUsageByUser.length > 0) || (priorUsageByContact && priorUsageByContact.length > 0)) {
-					toast.error('This code can only be used once per customer');
-					setAppliedDiscountCode(null);
-					setDiscountAmount(0);
-					return;
-				}
 			}
 
 			setAppliedDiscountCode(code);
@@ -798,19 +733,9 @@ const Checkout = () => {
 						);
 
 						if (appliedDiscountCode) {
-							const { data: latestCodeData } = await supabase
-								.from('discount_codes')
-								.select('times_used')
-								.eq('id', appliedDiscountCode.id)
-								.single();
-
-							await supabase
-								.from('discount_codes')
-								.update({
-									times_used: (latestCodeData?.times_used || 0) + 1,
-									updated_at: new Date().toISOString(),
-								})
-								.eq('id', appliedDiscountCode.id);
+							await supabase.rpc('increment_discount_code_usage', {
+								p_code_id: appliedDiscountCode.id,
+							});
 						}
 
 						setDiscountUsageLocked(false);

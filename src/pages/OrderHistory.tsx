@@ -27,6 +27,8 @@ const OrderHistory = () => {
 	const navigate = useNavigate();
 	const [orders, setOrders] = useState<OrderWithItems[]>([]);
 	const [loading, setLoading] = useState(true);
+	const getErrorMessage = (error: unknown) =>
+		error instanceof Error ? error.message : 'An unexpected error occurred';
 
 	useEffect(() => {
 		if (!user) {
@@ -81,9 +83,9 @@ const OrderHistory = () => {
 			);
 
 			setOrders(ordersWithItems);
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error loading orders:', error);
-			toast.error('Failed to load orders');
+			toast.error(getErrorMessage(error) || 'Failed to load orders');
 			setOrders([]);
 		} finally {
 			setLoading(false);

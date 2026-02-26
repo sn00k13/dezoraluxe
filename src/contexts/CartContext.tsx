@@ -26,6 +26,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
 	const { user } = useAuth();
 	const [cartItems, setCartItems] = useState<CartItemWithProduct[]>([]);
 	const [loading, setLoading] = useState(true);
+	const getErrorMessage = (error: unknown) =>
+		error instanceof Error ? error.message : 'An unexpected error occurred';
 
 	// Load cart items from database or localStorage
 	const loadCart = async () => {
@@ -257,9 +259,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
 					metadata: { quantity, guest: true },
 				});
 			}
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error adding to cart:', error);
-			toast.error(error.message || 'Failed to add item to cart');
+			toast.error(getErrorMessage(error) || 'Failed to add item to cart');
 		}
 	};
 
@@ -294,9 +296,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
 			// Update local state
 			setCartItems((prev) => prev.filter((item) => item.id !== cartItemId));
 			toast.success('Removed from cart');
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error removing from cart:', error);
-			toast.error(error.message || 'Failed to remove item from cart');
+			toast.error(getErrorMessage(error) || 'Failed to remove item from cart');
 		}
 	};
 
@@ -360,9 +362,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
 					item.id === cartItemId ? { ...item, quantity } : item
 				)
 			);
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error updating quantity:', error);
-			toast.error(error.message || 'Failed to update quantity');
+			toast.error(getErrorMessage(error) || 'Failed to update quantity');
 		}
 	};
 
@@ -385,9 +387,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
 			}
 
 			setCartItems([]);
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error clearing cart:', error);
-			toast.error(error.message || 'Failed to clear cart');
+			toast.error(getErrorMessage(error) || 'Failed to clear cart');
 		}
 	};
 

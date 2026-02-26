@@ -3,7 +3,7 @@
  * 
  * To use Cloudinary:
  * 1. Sign up at https://cloudinary.com
- * 2. Get your Cloud Name, API Key, and API Secret from Dashboard
+ * 2. Get your Cloud Name from Dashboard
  * 3. Create an unsigned upload preset for client-side uploads
  * 4. Add them to your .env file
  * 
@@ -12,8 +12,6 @@
 
 const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || '';
 const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || '';
-const CLOUDINARY_API_KEY = import.meta.env.VITE_CLOUDINARY_API_KEY || '';
-const CLOUDINARY_API_SECRET = import.meta.env.VITE_CLOUDINARY_API_SECRET || '';
 
 /**
  * Upload an image to Cloudinary using unsigned upload preset

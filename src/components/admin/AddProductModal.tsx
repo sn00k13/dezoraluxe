@@ -45,6 +45,9 @@ const checkSupabaseConfig = () => {
 	
 	return { valid: true, error: null };
 };
+
+const getErrorMessage = (error: unknown) =>
+	error instanceof Error ? error.message : 'An unexpected error occurred';
 import { Loader2, Upload, X, Plus, Trash2 } from 'lucide-react';
 import {
 	AlertDialog,
@@ -269,9 +272,9 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 			setNewCollectionImage(null);
 			setNewCollectionImagePreview(null);
 			setShowNewCollectionInput(false);
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error creating collection:', error);
-			toast.error(error.message || 'Failed to create collection');
+			toast.error(getErrorMessage(error) || 'Failed to create collection');
 		}
 	};
 
@@ -313,9 +316,9 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 			}
 			
 			setDeleteCollectionId(null);
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error deleting collection:', error);
-			toast.error(error.message || 'Failed to delete collection');
+			toast.error(getErrorMessage(error) || 'Failed to delete collection');
 		}
 	};
 
@@ -423,9 +426,9 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 			setNewCategoryImage(null);
 			setNewCategoryImagePreview(null);
 			setShowNewCategoryInput(false);
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error creating category:', error);
-			toast.error(error.message || 'Failed to create category');
+			toast.error(getErrorMessage(error) || 'Failed to create category');
 		}
 	};
 
@@ -476,9 +479,9 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 			}
 			
 			setDeleteCategoryId(null);
-		} catch (error: any) {
+		} catch (error: unknown) {
 			console.error('Error deleting category:', error);
-			toast.error(error.message || 'Failed to delete category');
+			toast.error(getErrorMessage(error) || 'Failed to delete category');
 		}
 	};
 
@@ -488,7 +491,6 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 			loadCollections();
 			loadCategories();
 		}
-		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [open]);
 
 	const handleSubmit = async (e: React.FormEvent) => {

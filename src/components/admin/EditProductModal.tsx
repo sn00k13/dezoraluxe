@@ -230,7 +230,7 @@ const EditProductModal = ({ product, open, onOpenChange, onSuccess }: EditProduc
 				return;
 			}
 
-			let finalImageUrls = [...existingImages];
+			const finalImageUrls = [...existingImages];
 
 			if (newImageFiles.length > 0) {
 				setUploadingImages(true);

@@ -7,6 +7,8 @@ import { toast } from "sonner";
 const Newsletter = () => {
   const [email, setEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const getErrorMessage = (error: unknown) =>
+    error instanceof Error ? error.message : 'An unexpected error occurred';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,9 +63,9 @@ const Newsletter = () => {
         }
         setEmail("");
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Subscription error:', error);
-      toast.error(error.message || 'Failed to subscribe. Please try again later.');
+      toast.error(getErrorMessage(error) || 'Failed to subscribe. Please try again later.');
     } finally {
       setIsSubmitting(false);
     }

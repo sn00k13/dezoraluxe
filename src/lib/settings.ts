@@ -34,6 +34,10 @@ export interface AdminSettings {
 	security: SecuritySettings;
 }
 
+interface ToastLike {
+	info: (message: string, options?: { title?: string }) => void;
+}
+
 const DEFAULT_SETTINGS: AdminSettings = {
 	notifications: {
 		newOrders: true,
@@ -157,7 +161,7 @@ export const isNotificationEnabled = (type: keyof NotificationSettings): boolean
 export const showNotification = (
 	type: keyof NotificationSettings,
 	message: string,
-	toast: any
+	toast: ToastLike
 ) => {
 	if (isNotificationEnabled(type)) {
 		toast.info(message);
@@ -173,7 +177,7 @@ export const showBrowserNotificationIfEnabled = async (
 	title: string,
 	message: string,
 	settings: AdminSettings,
-	toast: any
+	toast: ToastLike
 ) => {
 	if (!isNotificationEnabled(type)) {
 		return;

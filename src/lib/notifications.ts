@@ -1,3 +1,9 @@
+import type { AdminSettings, NotificationSettings } from './settings';
+
+interface ToastLike {
+	info: (message: string, options?: { title?: string }) => void;
+}
+
 /**
  * Browser Notification Service
  * 
@@ -70,11 +76,11 @@ export const showBrowserNotification = (
  * Show notification based on settings
  */
 export const showNotificationIfEnabled = async (
-	type: 'newOrders' | 'lowStock' | 'newUsers' | 'orderUpdates' | 'weeklyReport',
+	type: keyof NotificationSettings,
 	title: string,
 	message: string,
-	settings: any,
-	toast: any
+	settings: AdminSettings,
+	toast: ToastLike
 ): Promise<void> => {
 	// Check if notification is enabled in settings
 	if (!settings.notifications[type]) {
