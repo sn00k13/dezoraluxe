@@ -696,7 +696,7 @@ const AdminDashboard = () => {
 	};
 
 	const executeDeleteConfirm = async () => {
-		if (deleteConfirm.confirmText !== 'DELETE' || !deleteConfirm.id || !deleteConfirm.type) return;
+		if (!deleteConfirm.id || !deleteConfirm.type) return;
 		const { type, id } = deleteConfirm;
 		setDeleteConfirm({ open: false, type: null, id: null, order: null, user: null, confirmText: '' });
 		if (type === 'product') await handleDeleteProduct(id);
@@ -3471,7 +3471,7 @@ const AdminDashboard = () => {
 				</DialogContent>
 			</Dialog>
 
-			{/* Delete confirmation dialog - type DELETE to confirm */}
+			{/* Delete confirmation dialog */}
 			<Dialog
 				open={deleteConfirm.open}
 				onOpenChange={(open) => {
@@ -3499,22 +3499,9 @@ const AdminDashboard = () => {
 									{deleteConfirm.user.full_name || deleteConfirm.user.email || deleteConfirm.user.id} will be removed from the app. Their auth account may still exist in Supabase.
 								</span>
 							)}
-							This action cannot be undone. Type <strong>DELETE</strong> below to confirm.
+							This action cannot be undone.
 						</DialogDescription>
 					</DialogHeader>
-					<div className="space-y-4 py-4">
-						<Label htmlFor="delete-confirm-input">Type DELETE to confirm</Label>
-						<Input
-							id="delete-confirm-input"
-							value={deleteConfirm.confirmText}
-							onChange={(e) =>
-								setDeleteConfirm((prev) => ({ ...prev, confirmText: e.target.value }))
-							}
-							placeholder="DELETE"
-							className="font-mono"
-							autoComplete="off"
-						/>
-					</div>
 					<div className="flex justify-end gap-2">
 						<Button
 							variant="outline"
@@ -3526,7 +3513,6 @@ const AdminDashboard = () => {
 						</Button>
 						<Button
 							variant="destructive"
-							disabled={deleteConfirm.confirmText !== 'DELETE'}
 							onClick={() => executeDeleteConfirm()}
 						>
 							Delete

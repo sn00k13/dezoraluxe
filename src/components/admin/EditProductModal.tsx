@@ -64,21 +64,13 @@ const EditProductModal = ({ product, open, onOpenChange, onSuccess }: EditProduc
 		cost_price: '',
 		selling_price: '',
 		discount: '',
+		base_stock: '',
 		featured: false,
 		new_arrival: false,
 		best_seller: false,
 		on_sale: false,
 	});
-	const [variantRows, setVariantRows] = useState<VariantFormRow[]>([
-		{
-			color: '',
-			size: '',
-			stock: '',
-			imageUrl: null,
-			imageFile: null,
-			imagePreview: null,
-		},
-	]);
+	const [variantRows, setVariantRows] = useState<VariantFormRow[]>([]);
 	const [features, setFeatures] = useState<string[]>([]);
 	const [newFeature, setNewFeature] = useState('');
 	const [existingImages, setExistingImages] = useState<string[]>([]);
@@ -182,6 +174,7 @@ const EditProductModal = ({ product, open, onOpenChange, onSuccess }: EditProduc
 				cost_price: String(product.cost_price ?? ''),
 				selling_price: String(product.selling_price ?? product.price ?? ''),
 				discount: String(Math.max(0, Math.min(100, existingDiscount))),
+				base_stock: String(Math.max(0, product.stock ?? 0)),
 				featured: product.featured ?? false,
 				new_arrival: product.new_arrival ?? false,
 				best_seller: product.best_seller ?? false,
@@ -192,15 +185,6 @@ const EditProductModal = ({ product, open, onOpenChange, onSuccess }: EditProduc
 			setExistingImages(Array.isArray(product.images) ? [...product.images] : []);
 			setNewImageFiles([]);
 			setNewImagePreviews([]);
-
-			const fallbackVariantRow: VariantFormRow = {
-				color: product.color?.split(',')[0]?.trim() || 'Default',
-				size: product.size?.split(',')[0]?.trim() || 'One Size',
-				stock: String(Math.max(0, product.stock ?? 0)),
-				imageUrl: product.images?.[0] ?? null,
-				imageFile: null,
-				imagePreview: null,
-			};
 
 			try {
 				const { data: variants, error: variantsError } = await supabase
@@ -213,7 +197,7 @@ const EditProductModal = ({ product, open, onOpenChange, onSuccess }: EditProduc
 				if (variantsError) {
 					if (!isMounted) return;
 					if (variantsError.code === '42P01' || variantsError.message?.includes('relation')) {
-						setVariantRows([fallbackVariantRow]);
+						setVariantRows([]);
 						return;
 					}
 					throw variantsError;
@@ -221,7 +205,7 @@ const EditProductModal = ({ product, open, onOpenChange, onSuccess }: EditProduc
 
 				if (!isMounted) return;
 				if (!variants || variants.length === 0) {
-					setVariantRows([fallbackVariantRow]);
+					setVariantRows([]);
 					return;
 				}
 
@@ -238,7 +222,7 @@ const EditProductModal = ({ product, open, onOpenChange, onSuccess }: EditProduc
 				);
 			} catch {
 				if (!isMounted) return;
-				setVariantRows([fallbackVariantRow]);
+				setVariantRows([]);
 			}
 		};
 
@@ -365,12 +349,6 @@ const EditProductModal = ({ product, open, onOpenChange, onSuccess }: EditProduc
 						variant.color !== '' || variant.size !== '' || Number.isFinite(variant.stock)
 				);
 
-			if (normalizedVariants.length === 0) {
-				toast.error('Add at least one variant with color, size, and stock');
-				setLoading(false);
-				return;
-			}
-
 			const hasInvalidVariants = normalizedVariants.some(
 				(variant) =>
 					!variant.color ||
@@ -445,10 +423,16 @@ const EditProductModal = ({ product, open, onOpenChange, onSuccess }: EditProduc
 			const uniqueSizes = Array.from(
 				new Set(normalizedVariants.map((variant) => variant.size))
 			);
-			const totalStock = normalizedVariants.reduce(
-				(sum, variant) => sum + variant.stock,
-				0
-			);
+			const fallbackStock = Number.parseInt(formData.base_stock || '0', 10);
+			if (!Number.isInteger(fallbackStock) || fallbackStock < 0) {
+				toast.error('Base stock must be a valid number (0 or more)');
+				setLoading(false);
+				return;
+			}
+			const totalStock =
+				normalizedVariants.length > 0
+					? normalizedVariants.reduce((sum, variant) => sum + variant.stock, 0)
+					: fallbackStock;
 
 			const { data: existingVariants, error: existingVariantsError } = await supabase
 				.from('product_variants')
@@ -559,8 +543,8 @@ const EditProductModal = ({ product, open, onOpenChange, onSuccess }: EditProduc
 				.update({
 					name: formData.name,
 					description: formData.description.trim() || null,
-					color: uniqueColors.join(', '),
-					size: uniqueSizes.join(', '),
+					color: uniqueColors.length > 0 ? uniqueColors.join(', ') : null,
+					size: uniqueSizes.length > 0 ? uniqueSizes.join(', ') : null,
 					category: formData.category,
 					collection: formData.collection || null,
 					price: finalPrice,
@@ -682,14 +666,14 @@ const EditProductModal = ({ product, open, onOpenChange, onSuccess }: EditProduc
 					{/* Variants */}
 					<div className="space-y-3">
 						<div className="flex items-center justify-between">
-							<Label>Variants (Color / Size / Stock / Image) *</Label>
+							<Label>Variants (Color / Size / Stock / Image)</Label>
 							<Button type="button" variant="outline" size="sm" onClick={addVariantRow}>
 								<Plus className="h-4 w-4 mr-1" />
 								Add Variant
 							</Button>
 						</div>
 						<p className="text-sm text-muted-foreground">
-							Update variant combinations, stock quantities, and variant images.
+							Optional. Use variants only when you need color/size-level stock and images.
 						</p>
 						<div className="space-y-2">
 							{variantRows.map((variant, index) => (
@@ -757,7 +741,6 @@ const EditProductModal = ({ product, open, onOpenChange, onSuccess }: EditProduc
 											variant="ghost"
 											size="icon"
 											onClick={() => removeVariantRow(index)}
-											disabled={variantRows.length === 1}
 											title="Remove variant"
 										>
 											<Trash2 className="h-4 w-4" />
@@ -865,6 +848,17 @@ const EditProductModal = ({ product, open, onOpenChange, onSuccess }: EditProduc
 								placeholder="0"
 							/>
 						</div>
+					</div>
+					<div className="space-y-2">
+						<Label htmlFor="base_stock">Base Stock (used when no variants)</Label>
+						<Input
+							id="base_stock"
+							type="number"
+							min="0"
+							value={formData.base_stock}
+							onChange={handleChange}
+							placeholder="0"
+						/>
 					</div>
 					{/* Features */}
 					<div className="space-y-2">

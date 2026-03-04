@@ -85,14 +85,13 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 		cost_price: '',
 		selling_price: '',
 		discount: '',
+		base_stock: '',
 		featured: false,
 		new_arrival: false,
 		best_seller: false,
 		on_sale: false,
 	});
-	const [variantRows, setVariantRows] = useState<VariantFormRow[]>([
-		{ color: '', size: '', stock: '', imageFile: null, imagePreview: null },
-	]);
+	const [variantRows, setVariantRows] = useState<VariantFormRow[]>([]);
 	const [features, setFeatures] = useState<string[]>([]);
 	const [newFeature, setNewFeature] = useState('');
 	const [collections, setCollections] = useState<Collection[]>([]);
@@ -607,12 +606,6 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 						variant.color !== '' || variant.size !== '' || Number.isFinite(variant.stock)
 				);
 
-			if (normalizedVariants.length === 0) {
-				toast.error('Add at least one variant with color, size, and stock');
-				setLoading(false);
-				return;
-			}
-
 			const hasInvalidVariants = normalizedVariants.some(
 				(variant) =>
 					!variant.color ||
@@ -691,10 +684,16 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 			const uniqueSizes = Array.from(
 				new Set(normalizedVariants.map((variant) => variant.size))
 			);
-			const totalStock = normalizedVariants.reduce(
-				(sum, variant) => sum + variant.stock,
-				0
-			);
+			const fallbackStock = Number.parseInt(formData.base_stock || '0', 10);
+			if (!Number.isInteger(fallbackStock) || fallbackStock < 0) {
+				toast.error('Base stock must be a valid number (0 or more)');
+				setLoading(false);
+				return;
+			}
+			const totalStock =
+				normalizedVariants.length > 0
+					? normalizedVariants.reduce((sum, variant) => sum + variant.stock, 0)
+					: fallbackStock;
 
 			// Create product in Supabase
 			const { data, error } = await supabase
@@ -702,8 +701,8 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 				.insert({
 					name: formData.name,
 					description: formData.description || null,
-					color: uniqueColors.join(', '),
-					size: uniqueSizes.join(', '),
+					color: uniqueColors.length > 0 ? uniqueColors.join(', ') : null,
+					size: uniqueSizes.length > 0 ? uniqueSizes.join(', ') : null,
 					category: formData.category,
 					collection: formData.collection || null,
 					price: finalPrice,
@@ -769,51 +768,53 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 				throw error;
 			}
 
-			const variantInsertRows = [];
-			for (const variant of normalizedVariants) {
-				const { url: variantImageUrl, error: variantUploadError } =
-					await uploadImageToCloudinary(variant.imageFile as File, 'products/variants', {
-						tags: [
-							'product-variant',
-							formData.category.toLowerCase(),
-							variant.color.toLowerCase(),
-							variant.size.toLowerCase(),
-						],
+			if (normalizedVariants.length > 0) {
+				const variantInsertRows = [];
+				for (const variant of normalizedVariants) {
+					const { url: variantImageUrl, error: variantUploadError } =
+						await uploadImageToCloudinary(variant.imageFile as File, 'products/variants', {
+							tags: [
+								'product-variant',
+								formData.category.toLowerCase(),
+								variant.color.toLowerCase(),
+								variant.size.toLowerCase(),
+							],
+						});
+
+					if (variantUploadError || !variantImageUrl) {
+						await supabase.from('products').delete().eq('id', data.id);
+						throw new Error(
+							`Failed to upload image for variant ${variant.color} / ${variant.size}`
+						);
+					}
+
+					variantInsertRows.push({
+						product_id: data.id,
+						color: variant.color,
+						size: variant.size,
+						stock: variant.stock,
+						price: finalPrice,
+						image_url: variantImageUrl,
 					});
+				}
 
-				if (variantUploadError || !variantImageUrl) {
+				const { error: variantInsertError } = await supabase
+					.from('product_variants')
+					.insert(variantInsertRows);
+
+				if (variantInsertError) {
+					// Roll back product create if variant create fails to avoid incomplete products.
 					await supabase.from('products').delete().eq('id', data.id);
-					throw new Error(
-						`Failed to upload image for variant ${variant.color} / ${variant.size}`
-					);
+					if (
+						variantInsertError.message?.includes('relation') ||
+						variantInsertError.code === '42P01'
+					) {
+						throw new Error(
+							'Product variants table not found. Run supabase/product_variants_inventory_setup.sql and retry.'
+						);
+					}
+					throw variantInsertError;
 				}
-
-				variantInsertRows.push({
-					product_id: data.id,
-					color: variant.color,
-					size: variant.size,
-					stock: variant.stock,
-					price: finalPrice,
-					image_url: variantImageUrl,
-				});
-			}
-
-			const { error: variantInsertError } = await supabase
-				.from('product_variants')
-				.insert(variantInsertRows);
-
-			if (variantInsertError) {
-				// Roll back product create if variant create fails to avoid incomplete products.
-				await supabase.from('products').delete().eq('id', data.id);
-				if (
-					variantInsertError.message?.includes('relation') ||
-					variantInsertError.code === '42P01'
-				) {
-					throw new Error(
-						'Product variants table not found. Run supabase/product_variants_inventory_setup.sql and retry.'
-					);
-				}
-				throw variantInsertError;
 			}
 
 			toast.success('Product created successfully!');
@@ -827,14 +828,13 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 				cost_price: '',
 				selling_price: '',
 				discount: '',
+				base_stock: '',
 				featured: false,
 				new_arrival: false,
 				best_seller: false,
 				on_sale: false,
 			});
-			setVariantRows([
-				{ color: '', size: '', stock: '', imageFile: null, imagePreview: null },
-			]);
+			setVariantRows([]);
 			setFeatures([]);
 			setNewFeature('');
 			setImageFiles([]);
@@ -933,14 +933,14 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 					{/* Variants */}
 					<div className="space-y-3">
 						<div className="flex items-center justify-between">
-							<Label>Variants (Color / Size / Stock / Image) *</Label>
+							<Label>Variants (Color / Size / Stock / Image)</Label>
 							<Button type="button" variant="outline" size="sm" onClick={addVariantRow}>
 								<Plus className="h-4 w-4 mr-1" />
 								Add Variant
 							</Button>
 						</div>
 						<p className="text-sm text-muted-foreground">
-							Add each color/size combination with stock quantity and a variant image.
+							Optional. Add variants when you need color/size-level stock and images.
 						</p>
 						<div className="space-y-2">
 							{variantRows.map((variant, index) => (
@@ -1008,7 +1008,6 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 											variant="ghost"
 											size="icon"
 											onClick={() => removeVariantRow(index)}
-											disabled={variantRows.length === 1}
 											title="Remove variant"
 										>
 											<Trash2 className="h-4 w-4" />
@@ -1399,6 +1398,17 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 								placeholder="0"
 							/>
 						</div>
+					</div>
+					<div className="space-y-2">
+						<Label htmlFor="base_stock">Base Stock (used when no variants)</Label>
+						<Input
+							id="base_stock"
+							type="number"
+							min="0"
+							value={formData.base_stock}
+							onChange={handleChange}
+							placeholder="0"
+						/>
 					</div>
 
 					{/* Features */}
