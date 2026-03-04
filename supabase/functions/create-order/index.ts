@@ -24,6 +24,9 @@ interface CreateOrderPayload {
   };
   items: Array<{
     product_id: string;
+    variant_id?: string | null;
+    selected_color?: string | null;
+    selected_size?: string | null;
     quantity: number;
     price: number;
   }>;
@@ -44,9 +47,17 @@ type OrderRow = {
   status: string;
 };
 
-type ProductStockRow = {
+type StockRow = {
   id: string;
   stock: number;
+};
+
+type StockSource = "products" | "product_variants";
+
+type MergedStockRequest = {
+  source: StockSource;
+  id: string;
+  quantity: number;
 };
 
 class HttpError extends Error {
@@ -83,50 +94,63 @@ const getClientIp = (req: Request) => {
 };
 
 const mergeRequestedQuantities = (items: CreateOrderPayload["items"]) => {
-  const quantitiesByProductId = new Map<string, number>();
+  const mergedRequests = new Map<string, MergedStockRequest>();
   for (const item of items) {
-    const currentQuantity = quantitiesByProductId.get(item.product_id) ?? 0;
-    quantitiesByProductId.set(item.product_id, currentQuantity + item.quantity);
+    const source: StockSource = item.variant_id ? "product_variants" : "products";
+    const targetId = item.variant_id ?? item.product_id;
+    const key = `${source}:${targetId}`;
+    const existing = mergedRequests.get(key);
+    if (existing) {
+      existing.quantity += item.quantity;
+      continue;
+    }
+
+    mergedRequests.set(key, {
+      source,
+      id: targetId,
+      quantity: item.quantity,
+    });
   }
-  return quantitiesByProductId;
+  return mergedRequests;
 };
 
-const updateProductStockWithRetry = async (
+const updateStockWithRetry = async (
   supabase: ReturnType<typeof createClient>,
-  productId: string,
+  source: StockSource,
+  stockTargetId: string,
   quantityDelta: number,
 ) => {
   const updateToApply = quantityDelta === 0 ? 0 : -quantityDelta;
   const shouldCheckAvailableStock = updateToApply < 0;
 
   for (let attempt = 1; attempt <= STOCK_UPDATE_RETRY_ATTEMPTS; attempt++) {
-    const { data: currentProduct, error: currentProductError } = await supabase
-      .from("products")
+    const { data: currentStockTarget, error: currentStockTargetError } = await supabase
+      .from(source)
       .select("id, stock")
-      .eq("id", productId)
-      .maybeSingle<ProductStockRow>();
+      .eq("id", stockTargetId)
+      .maybeSingle<StockRow>();
 
-    if (currentProductError) {
-      throw currentProductError;
+    if (currentStockTargetError) {
+      throw currentStockTargetError;
     }
 
-    if (!currentProduct) {
-      throw new HttpError("One or more products in the order no longer exist", 400);
+    if (!currentStockTarget) {
+      throw new HttpError("One or more products or variants in the order no longer exist", 400);
     }
 
     if (
       shouldCheckAvailableStock &&
-      (!Number.isFinite(currentProduct.stock) || currentProduct.stock < Math.abs(updateToApply))
+      (!Number.isFinite(currentStockTarget.stock) || currentStockTarget.stock < Math.abs(updateToApply))
     ) {
-      throw new HttpError(`Insufficient stock for product ${productId}`, 409);
+      throw new HttpError(`Insufficient stock for ${source} ${stockTargetId}`, 409);
     }
 
-    const newStockValue = currentProduct.stock + updateToApply;
-    const { data: updatedProduct, error: updateError } = await supabase
-      .from("products")
+    const newStockValue = currentStockTarget.stock + updateToApply;
+    const { data: updatedTarget, error: updateError } = await supabase
+      .from(source)
       .update({ stock: newStockValue })
-      .eq("id", productId)
-      .eq("stock", currentProduct.stock)
+      .eq("id", stockTargetId)
+      .eq("stock", currentStockTarget.stock)
       .select("id")
       .maybeSingle<{ id: string }>();
 
@@ -134,7 +158,7 @@ const updateProductStockWithRetry = async (
       throw updateError;
     }
 
-    if (updatedProduct) {
+    if (updatedTarget) {
       return;
     }
   }
@@ -245,37 +269,60 @@ serve(async (req) => {
     }
 
     const requestedQuantities = mergeRequestedQuantities(payload.items);
-    const productIds = Array.from(requestedQuantities.keys());
-    const { data: stockRows, error: stockRowsError } = await supabase
-      .from("products")
-      .select("id, stock")
-      .in("id", productIds);
+    const requests = Array.from(requestedQuantities.values());
+    const productIds = requests
+      .filter((request) => request.source === "products")
+      .map((request) => request.id);
+    const variantIds = requests
+      .filter((request) => request.source === "product_variants")
+      .map((request) => request.id);
 
-    if (stockRowsError) {
-      throw stockRowsError;
+    const [{ data: productStockRows, error: productStockRowsError }, { data: variantStockRows, error: variantStockRowsError }] =
+      await Promise.all([
+        productIds.length > 0
+          ? supabase.from("products").select("id, stock").in("id", productIds)
+          : Promise.resolve({ data: [] as StockRow[], error: null }),
+        variantIds.length > 0
+          ? supabase.from("product_variants").select("id, stock").in("id", variantIds)
+          : Promise.resolve({ data: [] as StockRow[], error: null }),
+      ]);
+
+    if (productStockRowsError) {
+      throw productStockRowsError;
     }
 
-    const stocksByProductId = new Map<string, number>(
-      (stockRows ?? []).map((row) => [row.id, row.stock]),
+    if (variantStockRowsError) {
+      throw variantStockRowsError;
+    }
+
+    const productStocksById = new Map<string, number>(
+      (productStockRows ?? []).map((row) => [row.id, row.stock]),
+    );
+    const variantStocksById = new Map<string, number>(
+      (variantStockRows ?? []).map((row) => [row.id, row.stock]),
     );
 
-    for (const [productId, requestedQuantity] of requestedQuantities.entries()) {
-      const availableStock = stocksByProductId.get(productId);
+    for (const request of requests) {
+      const availableStock =
+        request.source === "product_variants"
+          ? variantStocksById.get(request.id)
+          : productStocksById.get(request.id);
 
       if (!Number.isFinite(availableStock)) {
         return new Response(
-          JSON.stringify({ error: "One or more products no longer exist" }),
+          JSON.stringify({ error: "One or more products or variants no longer exist" }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
       }
 
-      if ((availableStock ?? 0) < requestedQuantity) {
+      if ((availableStock ?? 0) < request.quantity) {
         return new Response(
           JSON.stringify({
             error: "Insufficient stock for one or more items",
-            productId,
+            source: request.source,
+            stockTargetId: request.id,
             availableStock,
-            requestedQuantity,
+            requestedQuantity: request.quantity,
           }),
           { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
         );
@@ -405,6 +452,9 @@ serve(async (req) => {
     const orderItems = payload.items.map((item) => ({
       order_id: createdOrder.id,
       product_id: item.product_id,
+      variant_id: item.variant_id ?? null,
+      selected_color: item.selected_color ?? null,
+      selected_size: item.selected_size ?? null,
       quantity: item.quantity,
       price: item.price,
     }));
@@ -419,20 +469,25 @@ serve(async (req) => {
       throw orderItemsError;
     }
 
-    const decrementedProducts: Array<{ productId: string; quantity: number }> = [];
+    const decrementedTargets: Array<{ source: StockSource; id: string; quantity: number }> = [];
     try {
-      for (const [productId, quantity] of requestedQuantities.entries()) {
-        await updateProductStockWithRetry(supabase, productId, quantity);
-        decrementedProducts.push({ productId, quantity });
+      for (const request of requestedQuantities.values()) {
+        await updateStockWithRetry(supabase, request.source, request.id, request.quantity);
+        decrementedTargets.push({
+          source: request.source,
+          id: request.id,
+          quantity: request.quantity,
+        });
       }
     } catch (stockError) {
       // Best-effort stock rollback for products already decremented in this request.
-      for (const decrementedProduct of decrementedProducts) {
+      for (const decrementedTarget of decrementedTargets) {
         try {
-          await updateProductStockWithRetry(
+          await updateStockWithRetry(
             supabase,
-            decrementedProduct.productId,
-            -decrementedProduct.quantity,
+            decrementedTarget.source,
+            decrementedTarget.id,
+            -decrementedTarget.quantity,
           );
         } catch {
           // Ignore rollback failures, we still clean up the order below.

@@ -71,6 +71,9 @@ export interface OrderItem {
 	id: string;
 	order_id: string;
 	product_id: string;
+	variant_id?: string | null;
+	selected_color?: string | null;
+	selected_size?: string | null;
 	quantity: number;
 	price: number;
 	created_at: string;
@@ -80,8 +83,24 @@ export interface CartItem {
 	id: string;
 	user_id: string;
 	product_id: string;
+	variant_id?: string | null;
+	selected_color?: string | null;
+	selected_size?: string | null;
 	quantity: number;
 	created_at: string;
+}
+
+export interface ProductVariant {
+	id: string;
+	product_id: string;
+	color: string;
+	size: string;
+	image_url?: string | null;
+	sku?: string | null;
+	price?: number | null;
+	stock: number;
+	created_at: string;
+	updated_at: string;
 }
 
 export interface Favorite {

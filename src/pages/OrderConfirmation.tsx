@@ -234,6 +234,13 @@ const OrderConfirmation = () => {
 														<p className="text-sm text-muted-foreground mb-2">
 															{item.category || item.product?.category || 'General'}
 														</p>
+														{(item.selected_color || item.selected_size) && (
+															<p className="text-xs text-muted-foreground mb-2">
+																{item.selected_color ? `Color: ${item.selected_color}` : ''}
+																{item.selected_color && item.selected_size ? ' | ' : ''}
+																{item.selected_size ? `Size: ${item.selected_size}` : ''}
+															</p>
+														)}
 														<div className="flex items-center justify-between">
 															<p className="text-sm text-muted-foreground">
 																Quantity: {item.quantity}

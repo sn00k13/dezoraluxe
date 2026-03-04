@@ -15,6 +15,7 @@ const ProductCard = ({ product, index }: ProductCardProps) => {
   const [isHovered, setIsHovered] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const { addToCart } = useCart();
+  const isOutOfStock = product.stock <= 0;
   const originalPrice = product.selling_price ?? product.price;
   const discountPercentage =
     originalPrice > 0 ? Math.round(((originalPrice - product.price) / originalPrice) * 100) : 0;
@@ -97,9 +98,9 @@ const ProductCard = ({ product, index }: ProductCardProps) => {
               e.preventDefault();
               addToCart(product.id, 1);
             }}
-            disabled={product.stock <= 0}
+            disabled={isOutOfStock}
           >
-            {product.stock <= 0 ? 'Out of Stock' : 'Add to Cart'}
+            {isOutOfStock ? 'Out of Stock' : 'Add to Cart'}
           </Button>
         </div>
       </div>

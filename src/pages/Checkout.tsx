@@ -285,6 +285,9 @@ const Checkout = () => {
 		cartItems?: Array<{
 			id: string;
 			product_id: string;
+			variant_id?: string | null;
+			selected_color?: string | null;
+			selected_size?: string | null;
 			product?: {
 				id: string;
 				name: string;
@@ -308,6 +311,9 @@ const Checkout = () => {
 			? cartItemsFromState.map((item) => ({
 					id: item.id,
 					product_id: item.product_id,
+					variant_id: item.variant_id ?? null,
+					selected_color: item.selected_color ?? null,
+					selected_size: item.selected_size ?? null,
 					product: item.product,
 					quantity: item.quantity,
 			  }))
@@ -573,6 +579,9 @@ const Checkout = () => {
 				.filter((item) => item.product)
 				.map((item) => ({
 					product_id: item.product_id,
+					variant_id: item.variant_id ?? null,
+					selected_color: item.selected_color ?? null,
+					selected_size: item.selected_size ?? null,
 					quantity: item.quantity,
 					price: item.product?.price || 0,
 				}));
@@ -1482,6 +1491,13 @@ const Checkout = () => {
 															<p className="text-xs text-muted-foreground">
 																Qty: {item.quantity}
 															</p>
+															{(item.selected_color || item.selected_size) && (
+																<p className="text-xs text-muted-foreground">
+																	{item.selected_color ? `Color: ${item.selected_color}` : ''}
+																	{item.selected_color && item.selected_size ? ' | ' : ''}
+																	{item.selected_size ? `Size: ${item.selected_size}` : ''}
+																</p>
+															)}
 															<p className="text-sm font-semibold text-gradient-gold mt-1">
 																{formatPrice(
 																	item.product.price * item.quantity

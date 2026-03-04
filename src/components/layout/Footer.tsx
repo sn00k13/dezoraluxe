@@ -1,25 +1,48 @@
 import { Link } from "react-router-dom";
 import { useCookieConsent } from "@/contexts/CookieConsentContext";
+import { loadSettings } from "@/lib/settings";
 
 const Footer = () => {
     const { openPreferences } = useCookieConsent();
+    const settings = loadSettings();
+    const whatsappNumber = settings.store.storePhone.replace(/\D/g, "");
+    const whatsappUrl = whatsappNumber ? `https://wa.me/${whatsappNumber}` : "#";
+    const socialLinks = [
+      { label: "Instagram", href: "https://www.instagram.com/dezora_luxe" },
+      { label: "TikTok", href: "https://www.tiktok.com/@dezora_luxe" },
+      { label: "Facebook", href: "https://www.facebook.com/dezora_luxe" },
+    ];
     
     const footerLinks = {
       Shop: ["New Arrivals", "Best Sellers", "Collections", "Sale"],
       Help: ["FAQ", "Shipping", "Returns", "Contact"],
-      Company: ["About Us", "Careers", "Press", "Sustainability"],
+      Company: ["About Us", "Careers", "Press Releases"],
       Legal: ["Privacy Policy", "Terms of Service", "Cookie Policy", "Cookie Preferences"],
     };
 
     const getLinkPath = (category: string, link: string): string => {
+      if (category === "Shop") {
+        if (link === "New Arrivals") return "/new-arrivals";
+        if (link === "Best Sellers") return "/best-sellers";
+        if (link === "Collections") return "/collections";
+        if (link === "Sale") return "/sale";
+      }
+      if (category === "Help") {
+        if (link === "FAQ") return "/faq";
+        if (link === "Shipping") return "/shipping";
+        if (link === "Returns") return "/returns";
+        if (link === "Contact") return "/contact";
+      }
+      if (category === "Company") {
+        if (link === "About Us") return "/about";
+        if (link === "Careers") return "/careers";
+        if (link === "Press Releases") return "/press-releases";
+      }
       if (category === "Legal") {
         if (link === "Privacy Policy") return "/privacy-policy";
         if (link === "Terms of Service") return "/terms-of-service";
         if (link === "Cookie Policy") return "/cookies-policy";
         if (link === "Cookie Preferences") return "#"; // Special case - handled by onClick
-      }
-      if (category === "Company" && link === "About Us") {
-        return "/about";
       }
       return "#";
     };
@@ -49,18 +72,6 @@ const Footer = () => {
                 Premium essentials for the modern individual.
               </p>
               
-              {/* Social Links */}
-              <div className="flex gap-4 pt-4">
-                {["Twitter", "Instagram", "LinkedIn"].map((social) => (
-                  <a
-                    key={social}
-                    href="#"
-                    className="text-xs uppercase tracking-wider text-muted-foreground hover:text-gold transition-colors"
-                  >
-                    {social}
-                  </a>
-                ))}
-              </div>
             </div>
             
             {/* Links */}
@@ -86,6 +97,31 @@ const Footer = () => {
                 </ul>
               </div>
             ))}
+          </div>
+
+          {/* Social Links */}
+          <div className="pb-6 flex items-center justify-center md:justify-end">
+            <div className="flex flex-wrap items-center gap-4">
+              {socialLinks.map((social) => (
+                <a
+                  key={social.label}
+                  href={social.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs uppercase tracking-wider text-muted-foreground hover:text-gold transition-colors"
+                >
+                  {social.label}
+                </a>
+              ))}
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs uppercase tracking-wider text-muted-foreground hover:text-gold transition-colors"
+              >
+                WhatsApp
+              </a>
+            </div>
           </div>
           
           {/* Bottom Bar */}

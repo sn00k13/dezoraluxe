@@ -68,23 +68,31 @@ interface AddProductModalProps {
 	onSuccess: () => void;
 }
 
+interface VariantFormRow {
+	color: string;
+	size: string;
+	stock: string;
+	imageFile: File | null;
+	imagePreview: string | null;
+}
+
 const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps) => {
 	const [formData, setFormData] = useState({
 		name: '',
 		description: '',
-		color: '',
-		size: '',
 		category: '',
 		collection: '',
 		cost_price: '',
 		selling_price: '',
 		discount: '',
-		stock: '',
 		featured: false,
 		new_arrival: false,
 		best_seller: false,
 		on_sale: false,
 	});
+	const [variantRows, setVariantRows] = useState<VariantFormRow[]>([
+		{ color: '', size: '', stock: '', imageFile: null, imagePreview: null },
+	]);
 	const [features, setFeatures] = useState<string[]>([]);
 	const [newFeature, setNewFeature] = useState('');
 	const [collections, setCollections] = useState<Collection[]>([]);
@@ -112,6 +120,62 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 			...formData,
 			[e.target.id]: e.target.value,
 		});
+	};
+
+	const updateVariantRow = (
+		index: number,
+		field: keyof VariantFormRow,
+		value: string
+	) => {
+		setVariantRows((prev) =>
+			prev.map((row, rowIndex) =>
+				rowIndex === index ? { ...row, [field]: value } : row
+			)
+		);
+	};
+
+	const addVariantRow = () => {
+		setVariantRows((prev) => [
+			...prev,
+			{ color: '', size: '', stock: '', imageFile: null, imagePreview: null },
+		]);
+	};
+
+	const removeVariantRow = (index: number) => {
+		setVariantRows((prev) =>
+			prev.length === 1 ? prev : prev.filter((_, rowIndex) => rowIndex !== index)
+		);
+	};
+
+	const handleVariantImageChange = (
+		index: number,
+		e: React.ChangeEvent<HTMLInputElement>
+	) => {
+		const file = e.target.files?.[0];
+		if (!file) return;
+		if (!file.type.startsWith('image/')) {
+			toast.error('Please select an image file for the variant');
+			e.target.value = '';
+			return;
+		}
+		if (file.size > 100 * 1024 * 1024) {
+			toast.error('Variant image size must be less than 100MB');
+			e.target.value = '';
+			return;
+		}
+
+		const reader = new FileReader();
+		reader.onloadend = () => {
+			setVariantRows((prev) =>
+				prev.map((row, rowIndex) =>
+					rowIndex === index
+						? { ...row, imageFile: file, imagePreview: reader.result as string }
+						: row
+				)
+			);
+		};
+		reader.readAsDataURL(file);
+		e.target.value = '';
 	};
 
 	const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -525,10 +589,54 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 			}
 
 			// Validate required fields
-			if (!formData.name || !formData.category || !formData.cost_price || !formData.selling_price || !formData.stock) {
+			if (!formData.name || !formData.category || !formData.cost_price || !formData.selling_price) {
 				toast.error('Please fill in all required fields');
 				setLoading(false);
 				return;
+			}
+
+			const normalizedVariants = variantRows
+				.map((variant) => ({
+					color: variant.color.trim(),
+					size: variant.size.trim(),
+					stock: Number.parseInt(variant.stock, 10),
+					imageFile: variant.imageFile,
+				}))
+				.filter(
+					(variant) =>
+						variant.color !== '' || variant.size !== '' || Number.isFinite(variant.stock)
+				);
+
+			if (normalizedVariants.length === 0) {
+				toast.error('Add at least one variant with color, size, and stock');
+				setLoading(false);
+				return;
+			}
+
+			const hasInvalidVariants = normalizedVariants.some(
+				(variant) =>
+					!variant.color ||
+					!variant.size ||
+					!Number.isInteger(variant.stock) ||
+					variant.stock < 0 ||
+					!variant.imageFile
+			);
+
+			if (hasInvalidVariants) {
+				toast.error('Each variant must include color, size, stock, and an image');
+				setLoading(false);
+				return;
+			}
+
+			const variantKeys = new Set<string>();
+			for (const variant of normalizedVariants) {
+				const key = `${variant.color.toLowerCase()}::${variant.size.toLowerCase()}`;
+				if (variantKeys.has(key)) {
+					toast.error('Duplicate variant combination found. Use unique color + size pairs.');
+					setLoading(false);
+					return;
+				}
+				variantKeys.add(key);
 			}
 
 			if (Number(formData.selling_price) < Number(formData.cost_price)) {
@@ -577,6 +685,16 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 			const finalImageUrls = imageUrls.length > 0 ? imageUrls : ['/placeholder.svg'];
 			const sellingPrice = parseFloat(formData.selling_price);
 			const finalPrice = sellingPrice * (1 - discountPercentage / 100);
+			const uniqueColors = Array.from(
+				new Set(normalizedVariants.map((variant) => variant.color))
+			);
+			const uniqueSizes = Array.from(
+				new Set(normalizedVariants.map((variant) => variant.size))
+			);
+			const totalStock = normalizedVariants.reduce(
+				(sum, variant) => sum + variant.stock,
+				0
+			);
 
 			// Create product in Supabase
 			const { data, error } = await supabase
@@ -584,14 +702,14 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 				.insert({
 					name: formData.name,
 					description: formData.description || null,
-					color: formData.color.trim() || null,
-					size: formData.size.trim() || null,
+					color: uniqueColors.join(', '),
+					size: uniqueSizes.join(', '),
 					category: formData.category,
 					collection: formData.collection || null,
 					price: finalPrice,
 					cost_price: parseFloat(formData.cost_price),
 					selling_price: sellingPrice,
-					stock: parseInt(formData.stock, 10),
+					stock: totalStock,
 					images: finalImageUrls,
 					featured: formData.featured,
 					new_arrival: formData.new_arrival,
@@ -651,25 +769,72 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 				throw error;
 			}
 
+			const variantInsertRows = [];
+			for (const variant of normalizedVariants) {
+				const { url: variantImageUrl, error: variantUploadError } =
+					await uploadImageToCloudinary(variant.imageFile as File, 'products/variants', {
+						tags: [
+							'product-variant',
+							formData.category.toLowerCase(),
+							variant.color.toLowerCase(),
+							variant.size.toLowerCase(),
+						],
+					});
+
+				if (variantUploadError || !variantImageUrl) {
+					await supabase.from('products').delete().eq('id', data.id);
+					throw new Error(
+						`Failed to upload image for variant ${variant.color} / ${variant.size}`
+					);
+				}
+
+				variantInsertRows.push({
+					product_id: data.id,
+					color: variant.color,
+					size: variant.size,
+					stock: variant.stock,
+					price: finalPrice,
+					image_url: variantImageUrl,
+				});
+			}
+
+			const { error: variantInsertError } = await supabase
+				.from('product_variants')
+				.insert(variantInsertRows);
+
+			if (variantInsertError) {
+				// Roll back product create if variant create fails to avoid incomplete products.
+				await supabase.from('products').delete().eq('id', data.id);
+				if (
+					variantInsertError.message?.includes('relation') ||
+					variantInsertError.code === '42P01'
+				) {
+					throw new Error(
+						'Product variants table not found. Run supabase/product_variants_inventory_setup.sql and retry.'
+					);
+				}
+				throw variantInsertError;
+			}
+
 			toast.success('Product created successfully!');
 			
 			// Reset form
 			setFormData({
 				name: '',
 				description: '',
-				color: '',
-				size: '',
 				category: '',
 				collection: '',
 				cost_price: '',
 				selling_price: '',
 				discount: '',
-				stock: '',
 				featured: false,
 				new_arrival: false,
 				best_seller: false,
 				on_sale: false,
 			});
+			setVariantRows([
+				{ color: '', size: '', stock: '', imageFile: null, imagePreview: null },
+			]);
 			setFeatures([]);
 			setNewFeature('');
 			setImageFiles([]);
@@ -765,25 +930,92 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 						/>
 					</div>
 
-					{/* Color and Size */}
-					<div className="grid grid-cols-2 gap-4">
-						<div className="space-y-2">
-							<Label htmlFor="color">Color</Label>
-							<Input
-								id="color"
-								value={formData.color}
-								onChange={handleChange}
-								placeholder="e.g., Black, Gold"
-							/>
+					{/* Variants */}
+					<div className="space-y-3">
+						<div className="flex items-center justify-between">
+							<Label>Variants (Color / Size / Stock / Image) *</Label>
+							<Button type="button" variant="outline" size="sm" onClick={addVariantRow}>
+								<Plus className="h-4 w-4 mr-1" />
+								Add Variant
+							</Button>
 						</div>
+						<p className="text-sm text-muted-foreground">
+							Add each color/size combination with stock quantity and a variant image.
+						</p>
 						<div className="space-y-2">
-							<Label htmlFor="size">Size</Label>
-							<Input
-								id="size"
-								value={formData.size}
-								onChange={handleChange}
-								placeholder="e.g., 42mm, One Size"
-							/>
+							{variantRows.map((variant, index) => (
+								<div key={index} className="grid grid-cols-12 gap-2 items-end">
+									<div className="col-span-3 space-y-1">
+										<Label className="text-xs">Color</Label>
+										<Input
+											value={variant.color}
+											onChange={(e) =>
+												updateVariantRow(index, 'color', e.target.value)
+											}
+											placeholder="e.g., Black"
+										/>
+									</div>
+									<div className="col-span-3 space-y-1">
+										<Label className="text-xs">Size</Label>
+										<Input
+											value={variant.size}
+											onChange={(e) =>
+												updateVariantRow(index, 'size', e.target.value)
+											}
+											placeholder="e.g., M"
+										/>
+									</div>
+									<div className="col-span-2 space-y-1">
+										<Label className="text-xs">Stock</Label>
+										<Input
+											type="number"
+											min="0"
+											value={variant.stock}
+											onChange={(e) =>
+												updateVariantRow(index, 'stock', e.target.value)
+											}
+											placeholder="0"
+										/>
+									</div>
+									<div className="col-span-3 space-y-1">
+										<Label className="text-xs">Image</Label>
+										<div className="flex items-center gap-2">
+											<Label
+												htmlFor={`variant-image-${index}`}
+												className="cursor-pointer text-xs text-gold hover:text-gold-muted"
+											>
+												Upload
+											</Label>
+											<Input
+												id={`variant-image-${index}`}
+												type="file"
+												accept="image/*"
+												className="hidden"
+												onChange={(e) => handleVariantImageChange(index, e)}
+											/>
+											{variant.imagePreview && (
+												<img
+													src={variant.imagePreview}
+													alt={`Variant ${index + 1}`}
+													className="h-8 w-8 rounded object-cover border border-border"
+												/>
+											)}
+										</div>
+									</div>
+									<div className="col-span-1">
+										<Button
+											type="button"
+											variant="ghost"
+											size="icon"
+											onClick={() => removeVariantRow(index)}
+											disabled={variantRows.length === 1}
+											title="Remove variant"
+										>
+											<Trash2 className="h-4 w-4" />
+										</Button>
+									</div>
+								</div>
+							))}
 						</div>
 					</div>
 
@@ -1167,20 +1399,6 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 								placeholder="0"
 							/>
 						</div>
-					</div>
-
-					{/* Stock */}
-					<div className="space-y-2">
-						<Label htmlFor="stock">Stock Quantity *</Label>
-						<Input
-							id="stock"
-							type="number"
-							min="0"
-							value={formData.stock}
-							onChange={handleChange}
-							placeholder="0"
-							required
-						/>
 					</div>
 
 					{/* Features */}

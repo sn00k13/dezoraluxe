@@ -14,7 +14,7 @@ import {
 	ArrowLeft,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import type { Product } from '@/types/database';
+import type { Product, ProductVariant } from '@/types/database';
 import { getOptimizedCloudinaryUrl } from '@/lib/cloudinary';
 import { useCart } from '@/contexts/CartContext';
 
@@ -25,6 +25,9 @@ const ProductDetail = () => {
 	const [quantity, setQuantity] = useState(1);
 	const [isFavorite, setIsFavorite] = useState(false);
 	const [selectedImage, setSelectedImage] = useState(0);
+	const [variants, setVariants] = useState<ProductVariant[]>([]);
+	const [selectedColor, setSelectedColor] = useState<string>('');
+	const [selectedSize, setSelectedSize] = useState<string>('');
 	const { addToCart } = useCart();
 
 	useEffect(() => {
@@ -46,6 +49,13 @@ const ProductDetail = () => {
 					setProduct(null);
 				} else {
 					setProduct(data);
+					const { data: variantRows } = await supabase
+						.from('product_variants')
+						.select('*')
+						.eq('product_id', data.id)
+						.order('color', { ascending: true })
+						.order('size', { ascending: true });
+					setVariants(variantRows || []);
 				}
 			} catch (error) {
 				console.error('Error loading product:', error);
@@ -65,6 +75,43 @@ const ProductDetail = () => {
 			minimumFractionDigits: 0,
 		}).format(price);
 	};
+
+	const hasVariantInventory = variants.length > 0;
+	const uniqueColors = Array.from(new Set(variants.map((variant) => variant.color))).filter(Boolean);
+	const relevantVariants = selectedColor
+		? variants.filter((variant) => variant.color === selectedColor)
+		: variants;
+	const uniqueSizes = Array.from(new Set(relevantVariants.map((variant) => variant.size))).filter(Boolean);
+	const selectedVariant =
+		variants.find(
+			(variant) => variant.color === selectedColor && variant.size === selectedSize
+		) ?? null;
+	const currentStock = selectedVariant?.stock ?? product?.stock ?? 0;
+	const displayedMainImage =
+		selectedVariant?.image_url || product?.images?.[selectedImage] || '/placeholder.svg';
+
+	useEffect(() => {
+		if (!hasVariantInventory) return;
+		if (!selectedColor && uniqueColors.length > 0) {
+			setSelectedColor(uniqueColors[0]);
+		}
+	}, [hasVariantInventory, selectedColor, uniqueColors]);
+
+	useEffect(() => {
+		if (!hasVariantInventory || !selectedColor) return;
+		const colorSizes = variants
+			.filter((variant) => variant.color === selectedColor)
+			.map((variant) => variant.size);
+		if (!colorSizes.includes(selectedSize)) {
+			setSelectedSize(colorSizes[0] ?? '');
+		}
+	}, [hasVariantInventory, selectedColor, selectedSize, variants]);
+
+	useEffect(() => {
+		if (quantity > currentStock) {
+			setQuantity(Math.max(1, currentStock));
+		}
+	}, [currentStock, quantity]);
 
 	if (loading) {
 		return (
@@ -108,6 +155,7 @@ const ProductDetail = () => {
 	const images = product.images && product.images.length > 0 
 		? product.images 
 		: ['/placeholder.svg'];
+	const selectedUnitPrice = selectedVariant?.price ?? product.price;
 	const originalPrice = product.selling_price ?? product.price;
 	const discountPercentage =
 		originalPrice > 0 ? Math.round(((originalPrice - product.price) / originalPrice) * 100) : 0;
@@ -169,8 +217,8 @@ const ProductDetail = () => {
 									)}
 									<img
 										src={
-											images[selectedImage]
-												? getOptimizedCloudinaryUrl(images[selectedImage], {
+											displayedMainImage
+												? getOptimizedCloudinaryUrl(displayedMainImage, {
 														width: 800,
 														height: 800,
 														crop: 'fill',
@@ -222,7 +270,7 @@ const ProductDetail = () => {
 									{/* Rating removed - not in database schema */}
 									<div className="flex items-center gap-3">
 										<p className="text-3xl font-bold text-gradient-gold">
-											{formatPrice(product.price)}
+											{formatPrice(selectedUnitPrice)}
 										</p>
 										{hasDiscount && (
 											<p className="text-lg text-muted-foreground line-through">
@@ -256,6 +304,50 @@ const ProductDetail = () => {
 
 								{/* Quantity and Actions */}
 								<div className="space-y-4 pt-4 border-t border-border">
+									{hasVariantInventory && (
+										<div className="space-y-4">
+											<div>
+												<p className="text-sm font-medium mb-2">Color</p>
+												<div className="flex flex-wrap gap-2">
+													{uniqueColors.map((color) => (
+														<Button
+															key={color}
+															type="button"
+															size="sm"
+															variant={selectedColor === color ? 'default' : 'outline'}
+															onClick={() => setSelectedColor(color)}
+														>
+															{color}
+														</Button>
+													))}
+												</div>
+											</div>
+											<div>
+												<p className="text-sm font-medium mb-2">Size</p>
+												<div className="flex flex-wrap gap-2">
+													{uniqueSizes.map((size) => {
+														const sizeVariant = variants.find(
+															(variant) =>
+																variant.color === selectedColor && variant.size === size
+														);
+														const isOut = (sizeVariant?.stock ?? 0) <= 0;
+														return (
+															<Button
+																key={size}
+																type="button"
+																size="sm"
+																variant={selectedSize === size ? 'default' : 'outline'}
+																onClick={() => setSelectedSize(size)}
+																disabled={isOut}
+															>
+																{size}
+															</Button>
+														);
+													})}
+												</div>
+											</div>
+										</div>
+									)}
 									<div className="flex items-center gap-4">
 										<span className="text-sm font-medium">Quantity:</span>
 										<div className="flex items-center gap-3">
@@ -272,7 +364,8 @@ const ProductDetail = () => {
 											<Button
 												variant="outline"
 												size="icon"
-												onClick={() => setQuantity(quantity + 1)}
+												onClick={() => setQuantity(Math.min(currentStock, quantity + 1))}
+												disabled={quantity >= currentStock}
 											>
 												<Plus className="h-4 w-4" />
 											</Button>
@@ -284,8 +377,14 @@ const ProductDetail = () => {
 											variant="hero"
 											className="flex-1"
 											size="lg"
-											disabled={product.stock <= 0}
-											onClick={() => addToCart(product.id, quantity)}
+											disabled={currentStock <= 0 || (hasVariantInventory && !selectedVariant)}
+											onClick={() =>
+												addToCart(product.id, quantity, {
+													variantId: selectedVariant?.id ?? null,
+													selectedColor: selectedVariant?.color ?? null,
+													selectedSize: selectedVariant?.size ?? null,
+												})
+											}
 										>
 											<ShoppingBag className="mr-2 h-5 w-5" />
 											Add to Cart
@@ -306,14 +405,14 @@ const ProductDetail = () => {
 										</Button>
 									</div>
 
-									{product.stock <= 0 && (
+									{currentStock <= 0 && (
 										<p className="text-sm text-destructive">
 											This item is currently out of stock
 										</p>
 									)}
-									{product.stock > 0 && product.stock < 10 && (
+									{currentStock > 0 && currentStock < 10 && (
 										<p className="text-sm text-gold">
-											Only {product.stock} left in stock
+											Only {currentStock} left in stock
 										</p>
 									)}
 								</div>

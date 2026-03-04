@@ -26,12 +26,13 @@ const Cart = () => {
 
 		const currentQuantity = item.quantity;
 		const newQuantity = currentQuantity + change;
+		const availableStock = item.variant_stock ?? item.product.stock;
 
 		// Don't allow quantity below 1 (use remove button instead)
 		if (newQuantity < 1) return;
 
 		// Don't allow quantity above stock
-		if (newQuantity > item.product.stock) return;
+		if (newQuantity > availableStock) return;
 
 		updateQuantity(cartItemId, newQuantity);
 	};
@@ -114,6 +115,13 @@ const Cart = () => {
 																<p className="text-sm text-muted-foreground mb-2">
 																	{item.product.category}
 																</p>
+										{(item.selected_color || item.selected_size) && (
+											<p className="text-xs text-muted-foreground mb-2">
+												{item.selected_color ? `Color: ${item.selected_color}` : ''}
+												{item.selected_color && item.selected_size ? ' | ' : ''}
+												{item.selected_size ? `Size: ${item.selected_size}` : ''}
+											</p>
+										)}
 																<p className="text-lg font-semibold text-gradient-gold">
 																	{formatPrice(item.product.price)}
 																</p>
@@ -142,10 +150,10 @@ const Cart = () => {
 																		onClick={() => handleQuantityChange(item.id, 1)}
 																		disabled={
 																			!item.product ||
-																			item.quantity >= item.product.stock
+																			item.quantity >= (item.variant_stock ?? item.product.stock)
 																		}
 																		title={
-																			item.quantity >= (item.product?.stock || 0)
+																			item.quantity >= (item.variant_stock ?? item.product?.stock ?? 0)
 																				? 'Maximum stock reached'
 																				: 'Increase quantity'
 																		}
@@ -212,6 +220,9 @@ const Cart = () => {
 																cartItems: cartItems.map(item => ({
 																	id: item.id,
 																	product_id: item.product_id,
+																	variant_id: item.variant_id ?? null,
+																	selected_color: item.selected_color ?? null,
+																	selected_size: item.selected_size ?? null,
 																	product: item.product,
 																	quantity: item.quantity,
 																})),

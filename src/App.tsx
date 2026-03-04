@@ -10,9 +10,17 @@ import { CookieBanner } from "@/components/CookieBanner";
 import { CookiePreferencesDialog } from "@/components/CookiePreferences";
 import Index from "./pages/Index";
 import NewArrivals from "./pages/NewArrivals";
+import BestSellers from "./pages/BestSellers";
+import Sale from "./pages/Sale";
 import Collections from "./pages/Collections";
 import Accessories from "./pages/Accessories";
 import About from "./pages/About";
+import FAQ from "./pages/FAQ";
+import Shipping from "./pages/Shipping";
+import Returns from "./pages/Returns";
+import Contact from "./pages/Contact";
+import Careers from "./pages/Careers";
+import PressReleases from "./pages/PressReleases";
 import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
 import AuthCallback from "./pages/AuthCallback";
@@ -50,9 +58,17 @@ const App = () => (
               <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/new-arrivals" element={<NewArrivals />} />
+              <Route path="/best-sellers" element={<BestSellers />} />
+              <Route path="/sale" element={<Sale />} />
               <Route path="/collections" element={<Collections />} />
               <Route path="/accessories" element={<Accessories />} />
               <Route path="/about" element={<About />} />
+              <Route path="/faq" element={<FAQ />} />
+              <Route path="/shipping" element={<Shipping />} />
+              <Route path="/returns" element={<Returns />} />
+              <Route path="/contact" element={<Contact />} />
+              <Route path="/careers" element={<Careers />} />
+              <Route path="/press-releases" element={<PressReleases />} />
               <Route path="/signin" element={<SignIn />} />
               <Route path="/signup" element={<SignUp />} />
               <Route path="/auth/callback" element={<AuthCallback />} />

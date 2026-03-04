@@ -2,18 +2,30 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { supabase } from '@/lib/supabase';
 import { useAuth } from './AuthContext';
 import { toast } from 'sonner';
-import type { CartItem, Product } from '@/types/database';
+import type { CartItem, Product, ProductVariant } from '@/types/database';
 import { trackAnalyticsEvent } from '@/lib/analytics';
 
 interface CartItemWithProduct extends CartItem {
 	product?: Product;
+	variant?: ProductVariant;
+	variant_stock?: number;
+}
+
+interface AddToCartOptions {
+	variantId?: string | null;
+	selectedColor?: string | null;
+	selectedSize?: string | null;
 }
 
 interface CartContextType {
 	cartItems: CartItemWithProduct[];
 	cartCount: number;
 	loading: boolean;
-	addToCart: (productId: string, quantity?: number) => Promise<void>;
+	addToCart: (
+		productId: string,
+		quantity?: number,
+		options?: AddToCartOptions
+	) => Promise<void>;
 	removeFromCart: (cartItemId: string) => Promise<void>;
 	updateQuantity: (cartItemId: string, quantity: number) => Promise<void>;
 	clearCart: () => Promise<void>;
@@ -28,6 +40,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
 	const [loading, setLoading] = useState(true);
 	const getErrorMessage = (error: unknown) =>
 		error instanceof Error ? error.message : 'An unexpected error occurred';
+	const getVariantIdentity = (
+		item: Pick<CartItem, 'variant_id' | 'selected_color' | 'selected_size'>
+	) =>
+		item.variant_id ??
+		`${item.selected_color ?? ''}::${item.selected_size ?? ''}`;
 
 	// Load cart items from database or localStorage
 	const loadCart = async () => {
@@ -55,10 +72,19 @@ export function CartProvider({ children }: { children: ReactNode }) {
 							.select('*')
 							.eq('id', item.product_id)
 							.single();
+						const { data: variant } = item.variant_id
+							? await supabase
+									.from('product_variants')
+									.select('*')
+									.eq('id', item.variant_id)
+									.maybeSingle()
+							: { data: null };
 
 						return {
 							...item,
 							product: product || undefined,
+							variant: variant || undefined,
+							variant_stock: variant?.stock,
 						};
 					})
 				);
@@ -72,20 +98,39 @@ export function CartProvider({ children }: { children: ReactNode }) {
 					
 					// Fetch product details for each cart item
 					const itemsWithProducts = await Promise.all(
-						parsedCart.map(async (item: { product_id: string; quantity: number }) => {
+						parsedCart.map(
+							async (item: {
+								product_id: string;
+								quantity: number;
+								variant_id?: string | null;
+								selected_color?: string | null;
+								selected_size?: string | null;
+							}) => {
 							const { data: product } = await supabase
 								.from('products')
 								.select('*')
 								.eq('id', item.product_id)
 								.single();
+							const { data: variant } = item.variant_id
+								? await supabase
+										.from('product_variants')
+										.select('*')
+										.eq('id', item.variant_id)
+										.maybeSingle()
+								: { data: null };
 
 							return {
-								id: `guest_${item.product_id}`,
+								id: `guest_${item.product_id}_${item.variant_id ?? 'base'}_${item.selected_color ?? ''}_${item.selected_size ?? ''}`,
 								user_id: '',
 								product_id: item.product_id,
+								variant_id: item.variant_id ?? null,
+								selected_color: item.selected_color ?? null,
+								selected_size: item.selected_size ?? null,
 								quantity: item.quantity,
 								created_at: new Date().toISOString(),
 								product: product || undefined,
+								variant: variant || undefined,
+								variant_stock: variant?.stock,
 							};
 						})
 					);
@@ -115,15 +160,34 @@ export function CartProvider({ children }: { children: ReactNode }) {
 			
 			// Add each item to database
 			for (const item of parsedCart) {
-				const { error } = await supabase
+				const variantId = item.variant_id ?? null;
+				const selectedColor = item.selected_color ?? null;
+				const selectedSize = item.selected_size ?? null;
+				let existingQuery = supabase
 					.from('cart_items')
-					.upsert({
-						user_id: user.id,
-						product_id: item.product_id,
-						quantity: item.quantity,
-					}, {
-						onConflict: 'user_id,product_id',
-					});
+					.select('id, quantity')
+					.eq('user_id', user.id)
+					.eq('product_id', item.product_id)
+					.limit(1);
+				existingQuery = variantId
+					? existingQuery.eq('variant_id', variantId)
+					: existingQuery.is('variant_id', null);
+				const { data: existingRows } = await existingQuery;
+				const existing = existingRows?.[0];
+
+				const { error } = existing
+					? await supabase
+							.from('cart_items')
+							.update({ quantity: existing.quantity + item.quantity })
+							.eq('id', existing.id)
+					: await supabase.from('cart_items').insert({
+							user_id: user.id,
+							product_id: item.product_id,
+							variant_id: variantId,
+							selected_color: selectedColor,
+							selected_size: selectedSize,
+							quantity: item.quantity,
+					  });
 
 				if (error) {
 					console.error('Error syncing cart item:', error);
@@ -153,21 +217,88 @@ export function CartProvider({ children }: { children: ReactNode }) {
 	}, [user]);
 
 	// Add item to cart
-	const addToCart = async (productId: string, quantity: number = 1) => {
+	const addToCart = async (
+		productId: string,
+		quantity: number = 1,
+		options?: AddToCartOptions
+	) => {
 		try {
+			let variantId = options?.variantId ?? null;
+			let selectedColor = options?.selectedColor ?? null;
+			let selectedSize = options?.selectedSize ?? null;
+
+			if (!variantId) {
+				const { data: fallbackVariant } = await supabase
+					.from('product_variants')
+					.select('*')
+					.eq('product_id', productId)
+					.gt('stock', 0)
+					.order('created_at', { ascending: true })
+					.limit(1)
+					.maybeSingle();
+				if (fallbackVariant) {
+					variantId = fallbackVariant.id;
+					selectedColor = fallbackVariant.color;
+					selectedSize = fallbackVariant.size;
+				}
+			}
+
+			const { data: variant } = variantId
+				? await supabase
+						.from('product_variants')
+						.select('*')
+						.eq('id', variantId)
+						.maybeSingle()
+				: { data: null };
+
+			if (variant && quantity > variant.stock) {
+				toast.error(`Only ${variant.stock} left for this variant`);
+				return;
+			}
+
 			if (user) {
 				// Add to database for logged-in users
-				const { data, error } = await supabase
+				let existingQuery = supabase
 					.from('cart_items')
-					.upsert({
-						user_id: user.id,
-						product_id: productId,
-						quantity: quantity,
-					}, {
-						onConflict: 'user_id,product_id',
-					})
-					.select()
-					.single();
+					.select('*')
+					.eq('user_id', user.id)
+					.eq('product_id', productId)
+					.limit(1);
+				existingQuery = variantId
+					? existingQuery.eq('variant_id', variantId)
+					: existingQuery.is('variant_id', null);
+				const { data: existingRows } = await existingQuery;
+				const existing = existingRows?.[0];
+				const nextQuantity = (existing?.quantity ?? 0) + quantity;
+
+				if (variant && nextQuantity > variant.stock) {
+					toast.error(`Only ${variant.stock} left for this variant`);
+					return;
+				}
+
+				const { data, error } = existing
+					? await supabase
+							.from('cart_items')
+							.update({
+								quantity: nextQuantity,
+								selected_color: selectedColor,
+								selected_size: selectedSize,
+							})
+							.eq('id', existing.id)
+							.select()
+							.single()
+					: await supabase
+							.from('cart_items')
+							.insert({
+								user_id: user.id,
+								product_id: productId,
+								variant_id: variantId,
+								selected_color: selectedColor,
+								selected_size: selectedSize,
+								quantity,
+							})
+							.select()
+							.single();
 
 				if (error) {
 					throw error;
@@ -182,11 +313,24 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
 				// Update local state
 				setCartItems((prev) => {
-					const existing = prev.find((item) => item.product_id === productId);
-					if (existing) {
+					const existingItem = prev.find(
+						(item) =>
+							item.product_id === productId &&
+							getVariantIdentity(item) ===
+								(variantId ?? `${selectedColor ?? ''}::${selectedSize ?? ''}`)
+					);
+					if (existingItem) {
 						return prev.map((item) =>
-							item.product_id === productId
-								? { ...item, quantity: quantity, product: product || undefined }
+							item.id === existingItem.id
+								? {
+										...item,
+										quantity: nextQuantity,
+										product: product || undefined,
+										variant: variant || undefined,
+										variant_stock: variant?.stock,
+										selected_color: selectedColor,
+										selected_size: selectedSize,
+								  }
 								: item
 						);
 					}
@@ -194,6 +338,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
 						{
 							...data,
 							product: product || undefined,
+							variant: variant || undefined,
+							variant_stock: variant?.stock,
 						},
 						...prev,
 					];
@@ -212,13 +358,32 @@ export function CartProvider({ children }: { children: ReactNode }) {
 				const cart = savedCart ? JSON.parse(savedCart) : [];
 				
 				const existingIndex = cart.findIndex(
-					(item: { product_id: string }) => item.product_id === productId
+					(item: {
+						product_id: string;
+						variant_id?: string | null;
+						selected_color?: string | null;
+						selected_size?: string | null;
+					}) =>
+						item.product_id === productId &&
+						(item.variant_id ?? null) === variantId &&
+						(item.selected_color ?? null) === selectedColor &&
+						(item.selected_size ?? null) === selectedSize
 				);
 
 				if (existingIndex >= 0) {
+					if (variant && cart[existingIndex].quantity + quantity > variant.stock) {
+						toast.error(`Only ${variant.stock} left for this variant`);
+						return;
+					}
 					cart[existingIndex].quantity += quantity;
 				} else {
-					cart.push({ product_id: productId, quantity: quantity });
+					cart.push({
+						product_id: productId,
+						variant_id: variantId,
+						selected_color: selectedColor,
+						selected_size: selectedSize,
+						quantity,
+					});
 				}
 
 				localStorage.setItem('guest_cart', JSON.stringify(cart));
@@ -231,22 +396,40 @@ export function CartProvider({ children }: { children: ReactNode }) {
 					.single();
 
 				setCartItems((prev) => {
-					const existing = prev.find((item) => item.product_id === productId);
+					const existing = prev.find(
+						(item) =>
+							item.product_id === productId &&
+							getVariantIdentity(item) ===
+								(variantId ?? `${selectedColor ?? ''}::${selectedSize ?? ''}`)
+					);
 					if (existing && existingIndex >= 0) {
 						return prev.map((item) =>
-							item.product_id === productId
-								? { ...item, quantity: cart[existingIndex].quantity, product: product || undefined }
+							item.id === existing.id
+								? {
+										...item,
+										quantity: cart[existingIndex].quantity,
+										product: product || undefined,
+										variant: variant || undefined,
+										variant_stock: variant?.stock,
+										selected_color: selectedColor,
+										selected_size: selectedSize,
+								  }
 								: item
 						);
 					}
 					return [
 						{
-							id: `guest_${productId}`,
+							id: `guest_${productId}_${variantId ?? 'base'}_${selectedColor ?? ''}_${selectedSize ?? ''}`,
 							user_id: '',
 							product_id: productId,
+							variant_id: variantId,
+							selected_color: selectedColor,
+							selected_size: selectedSize,
 							quantity: existingIndex >= 0 ? cart[existingIndex].quantity : quantity,
 							created_at: new Date().toISOString(),
 							product: product || undefined,
+							variant: variant || undefined,
+							variant_stock: variant?.stock,
 						},
 						...prev,
 					];
@@ -286,7 +469,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
 					if (savedCart) {
 						const cart = JSON.parse(savedCart);
 						const filtered = cart.filter(
-							(cartItem: { product_id: string }) => cartItem.product_id !== item.product_id
+							(cartItem: {
+								product_id: string;
+								variant_id?: string | null;
+								selected_color?: string | null;
+								selected_size?: string | null;
+							}) =>
+								!(
+									cartItem.product_id === item.product_id &&
+									(cartItem.variant_id ?? null) === (item.variant_id ?? null) &&
+									(cartItem.selected_color ?? null) === (item.selected_color ?? null) &&
+									(cartItem.selected_size ?? null) === (item.selected_size ?? null)
+								)
 						);
 						localStorage.setItem('guest_cart', JSON.stringify(filtered));
 					}
@@ -346,7 +540,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
 					if (savedCart) {
 						const cart = JSON.parse(savedCart);
 						const index = cart.findIndex(
-							(cartItem: { product_id: string }) => cartItem.product_id === item.product_id
+							(cartItem: {
+								product_id: string;
+								variant_id?: string | null;
+								selected_color?: string | null;
+								selected_size?: string | null;
+							}) =>
+								cartItem.product_id === item.product_id &&
+								(cartItem.variant_id ?? null) === (item.variant_id ?? null) &&
+								(cartItem.selected_color ?? null) === (item.selected_color ?? null) &&
+								(cartItem.selected_size ?? null) === (item.selected_size ?? null)
 						);
 						if (index >= 0) {
 							cart[index].quantity = quantity;
