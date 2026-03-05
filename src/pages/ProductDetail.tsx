@@ -404,17 +404,6 @@ const ProductDetail = () => {
 											/>
 										</Button>
 									</div>
-
-									{currentStock <= 0 && (
-										<p className="text-sm text-destructive">
-											This item is currently out of stock
-										</p>
-									)}
-									{currentStock > 0 && currentStock < 10 && (
-										<p className="text-sm text-gold">
-											Only {currentStock} left in stock
-										</p>
-									)}
 								</div>
 							</div>
 						</div>
