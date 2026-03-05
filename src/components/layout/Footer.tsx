@@ -107,7 +107,7 @@ const Footer = () => {
                   key={social.label}
                   href={social.href}
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                   className="text-xs uppercase tracking-wider text-muted-foreground hover:text-gold transition-colors"
                 >
                   {social.label}
@@ -116,7 +116,7 @@ const Footer = () => {
               <a
                 href={whatsappUrl}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className="text-xs uppercase tracking-wider text-muted-foreground hover:text-gold transition-colors"
               >
                 WhatsApp
