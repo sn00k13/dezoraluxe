@@ -87,8 +87,35 @@ const ProductDetail = () => {
 			(variant) => variant.color === selectedColor && variant.size === selectedSize
 		) ?? null;
 	const currentStock = selectedVariant?.stock ?? product?.stock ?? 0;
-	const displayedMainImage =
-		selectedVariant?.image_url || product?.images?.[selectedImage] || '/placeholder.svg';
+	const images =
+		product?.images && product.images.length > 0
+			? product.images
+			: ['/placeholder.svg'];
+	const colorImageMap = new Map<string, { src: string; color: string }>();
+	variants.forEach((variant) => {
+		if (!variant.color || !variant.image_url || colorImageMap.has(variant.color)) return;
+		colorImageMap.set(variant.color, {
+			src: variant.image_url,
+			color: variant.color,
+		});
+	});
+	const variantImages = Array.from(colorImageMap.values());
+	const imageMap = new Map<
+		string,
+		{ src: string; color?: string | null }
+	>();
+	images.forEach((image) => {
+		if (!imageMap.has(image)) {
+			imageMap.set(image, { src: image });
+		}
+	});
+	variantImages.forEach((image) => {
+		if (!imageMap.has(image.src)) {
+			imageMap.set(image.src, image);
+		}
+	});
+	const galleryItems = Array.from(imageMap.values());
+	const displayedMainImage = galleryItems[selectedImage]?.src || '/placeholder.svg';
 
 	useEffect(() => {
 		if (!hasVariantInventory) return;
@@ -112,6 +139,22 @@ const ProductDetail = () => {
 			setQuantity(Math.max(1, currentStock));
 		}
 	}, [currentStock, quantity]);
+
+	useEffect(() => {
+		if (selectedImage >= galleryItems.length) {
+			setSelectedImage(0);
+		}
+	}, [galleryItems.length, selectedImage]);
+
+	useEffect(() => {
+		if (!selectedVariant?.image_url) return;
+		const variantImageIndex = galleryItems.findIndex(
+			(item) => item.src === selectedVariant.image_url
+		);
+		if (variantImageIndex >= 0 && variantImageIndex !== selectedImage) {
+			setSelectedImage(variantImageIndex);
+		}
+	}, [galleryItems, selectedImage, selectedVariant?.image_url]);
 
 	if (loading) {
 		return (
@@ -151,10 +194,6 @@ const ProductDetail = () => {
 		);
 	}
 
-	// Use product images array, or fallback to placeholder
-	const images = product.images && product.images.length > 0 
-		? product.images 
-		: ['/placeholder.svg'];
 	const selectedUnitPrice = selectedVariant?.price ?? product.price;
 	const originalPrice = product.selling_price ?? product.price;
 	const discountPercentage =
@@ -230,20 +269,25 @@ const ProductDetail = () => {
 										className="w-full h-full object-cover"
 									/>
 								</div>
-								{images.length > 1 && (
-									<div className="grid grid-cols-3 gap-4">
-										{images.map((img, index) => (
+								{galleryItems.length > 1 && (
+									<div className="flex gap-4 overflow-x-auto pb-2">
+										{galleryItems.map((item, index) => (
 											<button
-												key={index}
-												onClick={() => setSelectedImage(index)}
-												className={`aspect-square overflow-hidden rounded-sm border-2 transition-all ${
+												key={`${item.src}-${index}`}
+												onClick={() => {
+													setSelectedImage(index);
+													if (item.color) {
+														setSelectedColor(item.color);
+													}
+												}}
+												className={`aspect-square w-24 shrink-0 overflow-hidden rounded-sm border-2 transition-all ${
 													selectedImage === index
 														? 'border-gold'
 														: 'border-border hover:border-gold/50'
 												}`}
 											>
 												<img
-													src={getOptimizedCloudinaryUrl(img, {
+													src={getOptimizedCloudinaryUrl(item.src, {
 														width: 200,
 														height: 200,
 														crop: 'fill',

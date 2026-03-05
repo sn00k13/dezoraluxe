@@ -4,7 +4,6 @@ import { Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Product } from "@/types/database";
 import { getOptimizedCloudinaryUrl } from "@/lib/cloudinary";
-import { useCart } from "@/contexts/CartContext";
 
 interface ProductCardProps {
   product: Product;
@@ -12,10 +11,8 @@ interface ProductCardProps {
   addToCartPlacement?: "image" | "price";
 }
 
-const ProductCard = ({ product, index, addToCartPlacement = "image" }: ProductCardProps) => {
+const ProductCard = ({ product, index, addToCartPlacement = "price" }: ProductCardProps) => {
   const [isLiked, setIsLiked] = useState(false);
-  const { addToCart } = useCart();
-  const isOutOfStock = product.stock <= 0;
   const originalPrice = product.selling_price ?? product.price;
   const discountPercentage =
     originalPrice > 0 ? Math.round(((originalPrice - product.price) / originalPrice) * 100) : 0;
@@ -73,17 +70,11 @@ const ProductCard = ({ product, index, addToCartPlacement = "image" }: ProductCa
         {/* Quick Add Button - Always visible, more prominent */}
         {addToCartPlacement === "image" && (
           <div className="absolute bottom-4 left-4 right-4">
-            <Button 
-              variant="hero" 
-              className="w-full shadow-lg"
-              onClick={(e) => {
-                e.preventDefault();
-                addToCart(product.id, 1);
-              }}
-              disabled={isOutOfStock}
-            >
-              Add to Cart
-            </Button>
+            <Link to={`/product/${product.id}`} className="block w-full">
+              <Button variant="hero" className="w-full shadow-lg">
+                Buy Now
+              </Button>
+            </Link>
           </div>
         )}
       </div>
@@ -108,18 +99,11 @@ const ProductCard = ({ product, index, addToCartPlacement = "image" }: ProductCa
             )}
           </div>
           {addToCartPlacement === "price" && (
-            <Button
-              size="sm"
-              variant="hero"
-              className="shrink-0"
-              onClick={(e) => {
-                e.preventDefault();
-                addToCart(product.id, 1);
-              }}
-              disabled={isOutOfStock}
-            >
-              Add to Cart
-            </Button>
+            <Link to={`/product/${product.id}`} className="shrink-0">
+              <Button size="sm" variant="hero" className="shrink-0">
+                Buy Now
+              </Button>
+            </Link>
           )}
         </div>
       </div>

@@ -16,10 +16,10 @@ const Navbar = () => {
 	const { cartCount } = useCart();
 
 	const navLinks = [
+		{ name: 'All Products', href: '/products' },
 		{ name: 'New Arrivals', href: '/new-arrivals' },
+		{ name: 'Best Sellers', href: '/best-sellers' },
 		{ name: 'Collections', href: '/collections' },
-		{ name: 'Accessories', href: '/accessories' },
-		{ name: 'About', href: '/about' },
 	];
 
 	return (
