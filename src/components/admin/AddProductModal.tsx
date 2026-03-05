@@ -598,12 +598,16 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 				.map((variant) => ({
 					color: variant.color.trim(),
 					size: variant.size.trim(),
+					stockRaw: variant.stock.trim(),
 					stock: Number.parseInt(variant.stock, 10),
 					imageFile: variant.imageFile,
 				}))
 				.filter(
 					(variant) =>
-						variant.color !== '' || variant.size !== '' || Number.isFinite(variant.stock)
+						variant.color !== '' ||
+						variant.size !== '' ||
+						variant.stockRaw !== '' ||
+						Boolean(variant.imageFile)
 				);
 
 			const hasInvalidVariants = normalizedVariants.some(
@@ -684,7 +688,8 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 			const uniqueSizes = Array.from(
 				new Set(normalizedVariants.map((variant) => variant.size))
 			);
-			const fallbackStock = Number.parseInt(formData.base_stock || '0', 10);
+			const baseStockRaw = formData.base_stock.trim();
+			const fallbackStock = Number.parseInt(baseStockRaw === '' ? '0' : baseStockRaw, 10);
 			if (!Number.isInteger(fallbackStock) || fallbackStock < 0) {
 				toast.error('Base stock must be a valid number (0 or more)');
 				setLoading(false);

@@ -246,9 +246,9 @@ const ProductDetail = () => {
 						</Link>
 
 						<div className="grid lg:grid-cols-2 gap-12">
-							{/* Product Images */}
-							<div className="space-y-4">
-								<div className="relative aspect-square overflow-hidden rounded-sm bg-card">
+							{/* Product Images - smaller & edge-to-edge on mobile */}
+							<div className="space-y-4 -mx-6 md:mx-0">
+								<div className="relative ml-0 aspect-[3/4] max-h-[55vh] w-full max-w-[100vw] overflow-hidden rounded-none bg-card md:ml-auto md:mr-auto md:aspect-square md:max-h-none md:max-w-none md:rounded-sm">
 									{hasDiscount && (
 										<div className="absolute top-3 right-3 z-10 bg-red-600 text-white text-xs font-semibold px-2 py-1 rounded-sm">
 											-{discountPercentage}%
