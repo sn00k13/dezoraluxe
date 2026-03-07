@@ -268,3 +268,10 @@
 .delay-400 { animation-delay: 400ms; }
 .delay-500 { animation-delay: 500ms; }
 .delay-600 { animation-delay: 600ms; }
+
+/* Sonner success toast - green styling */
+[data-sonner-toast][data-type="success"] {
+  background-color: rgb(22 163 74) !important;
+  color: white !important;
+  border-color: rgb(21 128 61) !important;
+}

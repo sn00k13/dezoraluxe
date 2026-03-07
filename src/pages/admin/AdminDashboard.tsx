@@ -634,19 +634,35 @@ const AdminDashboard = () => {
 
 	const handleDeleteOrder = async (orderId: string) => {
 		try {
-			const { error: itemsError } = await supabase
-				.from('order_items')
-				.delete()
-				.eq('order_id', orderId);
+			// Try RPC first (requires migration). Fall back to direct delete if RPC doesn't exist.
+			const { data, error } = await supabase.rpc('admin_delete_order', {
+				p_order_id: orderId,
+			});
 
-			if (itemsError) throw itemsError;
+			if (error) {
+				// PGRST202 = function not found (migration not applied)
+				if (error.code === 'PGRST202') {
+					// Fallback: direct delete (requires RLS to allow admin deletes)
+					const { error: itemsError } = await supabase
+						.from('order_items')
+						.delete()
+						.eq('order_id', orderId);
+					if (itemsError) throw itemsError;
 
-			const { error } = await supabase
-				.from('orders')
-				.delete()
-				.eq('id', orderId);
-
-			if (error) throw error;
+					const { error: orderError } = await supabase
+						.from('orders')
+						.delete()
+						.eq('id', orderId);
+					if (orderError) throw orderError;
+				} else {
+					throw error;
+				}
+			} else {
+				const result = data as { success: boolean; error?: string } | null;
+				if (result && !result.success) {
+					throw new Error(result.error || 'Failed to delete order');
+				}
+			}
 
 			toast.success('Order deleted successfully');
 			loadOrders();
@@ -863,6 +879,10 @@ const AdminDashboard = () => {
 			order.discount_customer_email ||
 			(order.user_id ? 'Registered user (email unavailable)' : 'Guest email unavailable')
 		);
+	};
+
+	const getCustomerPhone = (order: Order) => {
+		return order.customer_phone || order.discount_customer_phone || 'N/A';
 	};
 
 	const formatPrice = (price: number) => {
@@ -1730,12 +1750,13 @@ const AdminDashboard = () => {
 
 						<Card className="border-border">
 							<CardContent className="p-0 overflow-x-auto">
-								<Table className="min-w-[760px]">
+								<Table className="min-w-[860px]">
 									<TableHeader>
 										<TableRow>
 											<TableHead>Order ID</TableHead>
 											<TableHead>Customer</TableHead>
 											<TableHead>Email</TableHead>
+											<TableHead>Phone</TableHead>
 											<TableHead>Amount</TableHead>
 											<TableHead>Status</TableHead>
 											<TableHead>Date</TableHead>
@@ -1746,7 +1767,7 @@ const AdminDashboard = () => {
 										{orders.length === 0 ? (
 											<TableRow>
 												<TableCell
-													colSpan={7}
+													colSpan={8}
 													className="text-center py-8 text-muted-foreground"
 												>
 													No orders found
@@ -1760,6 +1781,7 @@ const AdminDashboard = () => {
 													</TableCell>
 													<TableCell>{getCustomerName(order)}</TableCell>
 													<TableCell>{getCustomerEmail(order)}</TableCell>
+													<TableCell>{getCustomerPhone(order)}</TableCell>
 													<TableCell>
 														{formatPrice(Number(order.total_amount))}
 													</TableCell>

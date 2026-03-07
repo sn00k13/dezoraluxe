@@ -49,6 +49,62 @@ interface ValidatedDiscountCode extends DiscountCode {
 	validation_error: string | null;
 }
 
+const CHECKOUT_GUEST_DRAFT_KEY = 'dezoraluxe_checkout_guest_draft';
+const DRAFT_EXPIRY_HOURS = 24;
+
+interface GuestCheckoutDraft {
+	guestEmail: string;
+	shippingInfo: {
+		firstName: string;
+		lastName: string;
+		email: string;
+		phone: string;
+		address: string;
+		city: string;
+		state: string;
+		zipCode: string;
+		country: string;
+	};
+	currentStage: 'email' | 'shipping' | 'delivery' | 'payment';
+	selectedDelivery: string;
+	savedAt: number;
+}
+
+const loadGuestCheckoutDraft = (): GuestCheckoutDraft | null => {
+	try {
+		const raw = localStorage.getItem(CHECKOUT_GUEST_DRAFT_KEY);
+		if (!raw) return null;
+		const draft = JSON.parse(raw) as GuestCheckoutDraft;
+		// Expire after 24 hours
+		if (Date.now() - (draft.savedAt || 0) > DRAFT_EXPIRY_HOURS * 60 * 60 * 1000) {
+			localStorage.removeItem(CHECKOUT_GUEST_DRAFT_KEY);
+			return null;
+		}
+		return draft;
+	} catch {
+		return null;
+	}
+};
+
+const saveGuestCheckoutDraft = (draft: Omit<GuestCheckoutDraft, 'savedAt'>) => {
+	try {
+		localStorage.setItem(
+			CHECKOUT_GUEST_DRAFT_KEY,
+			JSON.stringify({ ...draft, savedAt: Date.now() })
+		);
+	} catch {
+		// Ignore storage errors
+	}
+};
+
+const clearGuestCheckoutDraft = () => {
+	try {
+		localStorage.removeItem(CHECKOUT_GUEST_DRAFT_KEY);
+	} catch {
+		// Ignore
+	}
+};
+
 const deliveryMethods: DeliveryMethod[] = [
 	{
 		id: 'gig',
@@ -66,7 +122,7 @@ const deliveryMethods: DeliveryMethod[] = [
 	},
 	{
 		id: 'abuja',
-		name: '* Locations Within Abuja',
+		name: 'Locations within Abuja',
 		company: 'Local Delivery',
 		price: 3000,
 		estimatedDays: 'Within Abuja',
@@ -83,7 +139,7 @@ const deliveryMethods: DeliveryMethod[] = [
 const Checkout = () => {
 	const navigate = useNavigate();
 	const location = useLocation();
-	const { user, signIn } = useAuth();
+	const { user, signIn, loading: authLoading } = useAuth();
 	const {
 		cartItems: contextCartItems,
 		loading: cartLoading,
@@ -130,6 +186,50 @@ const Checkout = () => {
 	const [isApplyingDiscount, setIsApplyingDiscount] = useState(false);
 	const [discountUsageLocked, setDiscountUsageLocked] = useState(false);
 	const paymentIdempotencyKeyRef = useRef<string | null>(null);
+	const hasRestoredDraftRef = useRef(false);
+
+	// Restore guest checkout draft from localStorage when returning to checkout
+	useEffect(() => {
+		if (authLoading || user !== null) return;
+		if (hasRestoredDraftRef.current) return;
+		hasRestoredDraftRef.current = true;
+		const draft = loadGuestCheckoutDraft();
+		if (!draft) return;
+		setGuestEmail(draft.guestEmail);
+		setShippingInfo(draft.shippingInfo);
+		setCurrentStage(draft.currentStage);
+		setSelectedDelivery(draft.selectedDelivery);
+		if (draft.currentStage !== 'email') {
+			setIsShippingOpen(true);
+		}
+	}, [user, authLoading]);
+
+	// Persist guest checkout draft to localStorage (debounced)
+	useEffect(() => {
+		if (user) return;
+		const timer = setTimeout(() => {
+			const hasData =
+				guestEmail ||
+				shippingInfo.firstName ||
+				shippingInfo.lastName ||
+				shippingInfo.address;
+			if (!hasData) return;
+			saveGuestCheckoutDraft({
+				guestEmail,
+				shippingInfo,
+				currentStage,
+				selectedDelivery,
+			});
+		}, 500);
+		return () => clearTimeout(timer);
+	}, [user, guestEmail, shippingInfo, currentStage, selectedDelivery]);
+
+	// Clear guest draft when user logs in (they'll use saved address)
+	useEffect(() => {
+		if (user) {
+			clearGuestCheckoutDraft();
+		}
+	}, [user]);
 
 	// Load saved addresses
 	const loadSavedAddresses = async () => {
@@ -148,8 +248,9 @@ const Checkout = () => {
 
 			setSavedAddresses(data || []);
 
-			// Auto-select default address if available
-			const defaultAddress = data?.find((addr) => addr.is_default);
+			// Auto-select default address, or first address if none is default
+			const defaultAddress =
+				data?.find((addr) => addr.is_default) ?? data?.[0];
 			if (defaultAddress) {
 				selectAddress(defaultAddress);
 			}
@@ -762,8 +863,9 @@ const Checkout = () => {
 							},
 						});
 
-						// Clear cart after successful payment
+						// Clear cart and guest checkout draft after successful payment
 						await clearCart();
+						clearGuestCheckoutDraft();
 						paymentIdempotencyKeyRef.current = null;
 
 						toast.success('Payment successful! Order confirmed.');
@@ -1350,7 +1452,7 @@ const Checkout = () => {
 													<strong className="text-foreground">Note:</strong> Extra charges may apply for higher order volumes.
 												</p>
 												<p className="text-sm text-muted-foreground">
-													<strong className="text-foreground">*</strong> This is applicaple for locations within Abuja main city environs. You might still be communicated for extra charges if your location is farther from the main city.
+													<strong className="text-foreground">*</strong> You might still be communicated for extra charges if your location is farther from the main city.
 												</p>
 											</div>
 

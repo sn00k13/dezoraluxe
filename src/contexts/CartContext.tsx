@@ -345,7 +345,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 					];
 				});
 
-				toast.success('Added to cart');
+				toast.success(product?.name ? `${product.name} added to cart` : 'Added to cart');
 				void trackAnalyticsEvent({
 					eventName: 'add_to_cart',
 					userId: user.id,
@@ -435,7 +435,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 					];
 				});
 
-				toast.success('Added to cart');
+				toast.success(product?.name ? `${product.name} added to cart` : 'Added to cart');
 				void trackAnalyticsEvent({
 					eventName: 'add_to_cart',
 					productId,

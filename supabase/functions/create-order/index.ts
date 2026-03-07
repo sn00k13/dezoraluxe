@@ -423,6 +423,7 @@ serve(async (req) => {
         discount_value: payload.discount.value,
         discount_amount: payload.discount.amount,
         pre_discount_total: payload.originalTotal,
+        customer_phone: payload.shippingInfo.phone || null,
         discount_customer_email: payload.discount.customerEmail,
         discount_customer_phone: payload.discount.customerPhone,
       })

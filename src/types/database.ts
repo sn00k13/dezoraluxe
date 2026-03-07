@@ -55,6 +55,7 @@ export interface Order {
 	payment_reference?: string | null;
 	delivery_method?: string | null;
 	customer_email?: string | null;
+	customer_phone?: string | null;
 	discount_code_id?: string | null;
 	discount_code?: string | null;
 	discount_type?: 'percentage' | 'fixed' | null;
