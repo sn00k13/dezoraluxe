@@ -47,19 +47,6 @@ type OrderRow = {
   status: string;
 };
 
-type StockRow = {
-  id: string;
-  stock: number;
-};
-
-type StockSource = "products" | "product_variants";
-
-type MergedStockRequest = {
-  source: StockSource;
-  id: string;
-  quantity: number;
-};
-
 class HttpError extends Error {
   status: number;
 
@@ -75,7 +62,7 @@ const ORDER_ROUTE = "create-order";
 const RATE_LIMIT_WINDOW_SECONDS = 60;
 const GUEST_RATE_LIMIT_MAX_REQUESTS = 6;
 const AUTH_RATE_LIMIT_MAX_REQUESTS = 12;
-const STOCK_UPDATE_RETRY_ATTEMPTS = 3;
+const STOCK_RESERVATION_MINUTES = 10;
 
 const getClientIp = (req: Request) => {
   const forwardedFor = req.headers.get("x-forwarded-for");
@@ -91,82 +78,6 @@ const getClientIp = (req: Request) => {
   if (cfConnectingIp?.trim()) return cfConnectingIp.trim();
 
   return "unknown";
-};
-
-const mergeRequestedQuantities = (items: CreateOrderPayload["items"]) => {
-  const mergedRequests = new Map<string, MergedStockRequest>();
-  for (const item of items) {
-    const source: StockSource = item.variant_id ? "product_variants" : "products";
-    const targetId = item.variant_id ?? item.product_id;
-    const key = `${source}:${targetId}`;
-    const existing = mergedRequests.get(key);
-    if (existing) {
-      existing.quantity += item.quantity;
-      continue;
-    }
-
-    mergedRequests.set(key, {
-      source,
-      id: targetId,
-      quantity: item.quantity,
-    });
-  }
-  return mergedRequests;
-};
-
-const updateStockWithRetry = async (
-  supabase: ReturnType<typeof createClient>,
-  source: StockSource,
-  stockTargetId: string,
-  quantityDelta: number,
-) => {
-  const updateToApply = quantityDelta === 0 ? 0 : -quantityDelta;
-  const shouldCheckAvailableStock = updateToApply < 0;
-
-  for (let attempt = 1; attempt <= STOCK_UPDATE_RETRY_ATTEMPTS; attempt++) {
-    const { data: currentStockTarget, error: currentStockTargetError } = await supabase
-      .from(source)
-      .select("id, stock")
-      .eq("id", stockTargetId)
-      .maybeSingle<StockRow>();
-
-    if (currentStockTargetError) {
-      throw currentStockTargetError;
-    }
-
-    if (!currentStockTarget) {
-      throw new HttpError("One or more products or variants in the order no longer exist", 400);
-    }
-
-    if (
-      shouldCheckAvailableStock &&
-      (!Number.isFinite(currentStockTarget.stock) || currentStockTarget.stock < Math.abs(updateToApply))
-    ) {
-      throw new HttpError(`Insufficient stock for ${source} ${stockTargetId}`, 409);
-    }
-
-    const newStockValue = currentStockTarget.stock + updateToApply;
-    const { data: updatedTarget, error: updateError } = await supabase
-      .from(source)
-      .update({ stock: newStockValue })
-      .eq("id", stockTargetId)
-      .eq("stock", currentStockTarget.stock)
-      .select("id")
-      .maybeSingle<{ id: string }>();
-
-    if (updateError) {
-      throw updateError;
-    }
-
-    if (updatedTarget) {
-      return;
-    }
-  }
-
-  throw new HttpError(
-    "Stock changed while creating your order. Please review your cart and try again.",
-    409,
-  );
 };
 
 serve(async (req) => {
@@ -266,67 +177,6 @@ serve(async (req) => {
         JSON.stringify({ error: "Invalid order items" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
-    }
-
-    const requestedQuantities = mergeRequestedQuantities(payload.items);
-    const requests = Array.from(requestedQuantities.values());
-    const productIds = requests
-      .filter((request) => request.source === "products")
-      .map((request) => request.id);
-    const variantIds = requests
-      .filter((request) => request.source === "product_variants")
-      .map((request) => request.id);
-
-    const [{ data: productStockRows, error: productStockRowsError }, { data: variantStockRows, error: variantStockRowsError }] =
-      await Promise.all([
-        productIds.length > 0
-          ? supabase.from("products").select("id, stock").in("id", productIds)
-          : Promise.resolve({ data: [] as StockRow[], error: null }),
-        variantIds.length > 0
-          ? supabase.from("product_variants").select("id, stock").in("id", variantIds)
-          : Promise.resolve({ data: [] as StockRow[], error: null }),
-      ]);
-
-    if (productStockRowsError) {
-      throw productStockRowsError;
-    }
-
-    if (variantStockRowsError) {
-      throw variantStockRowsError;
-    }
-
-    const productStocksById = new Map<string, number>(
-      (productStockRows ?? []).map((row) => [row.id, row.stock]),
-    );
-    const variantStocksById = new Map<string, number>(
-      (variantStockRows ?? []).map((row) => [row.id, row.stock]),
-    );
-
-    for (const request of requests) {
-      const availableStock =
-        request.source === "product_variants"
-          ? variantStocksById.get(request.id)
-          : productStocksById.get(request.id);
-
-      if (!Number.isFinite(availableStock)) {
-        return new Response(
-          JSON.stringify({ error: "One or more products or variants no longer exist" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
-
-      if ((availableStock ?? 0) < request.quantity) {
-        return new Response(
-          JSON.stringify({
-            error: "Insufficient stock for one or more items",
-            source: request.source,
-            stockTargetId: request.id,
-            availableStock,
-            requestedQuantity: request.quantity,
-          }),
-          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
     }
 
     // Resolve authenticated user when present; guests remain null.
@@ -470,39 +320,37 @@ serve(async (req) => {
       throw orderItemsError;
     }
 
-    const decrementedTargets: Array<{ source: StockSource; id: string; quantity: number }> = [];
     try {
-      for (const request of requestedQuantities.values()) {
-        await updateStockWithRetry(supabase, request.source, request.id, request.quantity);
-        decrementedTargets.push({
-          source: request.source,
-          id: request.id,
-          quantity: request.quantity,
-        });
-      }
-    } catch (stockError) {
-      // Best-effort stock rollback for products already decremented in this request.
-      for (const decrementedTarget of decrementedTargets) {
-        try {
-          await updateStockWithRetry(
-            supabase,
-            decrementedTarget.source,
-            decrementedTarget.id,
-            -decrementedTarget.quantity,
-          );
-        } catch {
-          // Ignore rollback failures, we still clean up the order below.
-        }
+      const { data: reservationResult, error: reservationError } = await supabase.rpc(
+        "reserve_order_stock",
+        {
+          p_order_id: createdOrder.id,
+          p_reservation_minutes: STOCK_RESERVATION_MINUTES,
+        },
+      );
+
+      if (reservationError) {
+        throw reservationError;
       }
 
+      return new Response(
+        JSON.stringify({
+          order: createdOrder,
+          reused: false,
+          reservationExpiresAt:
+            reservationResult && typeof reservationResult === "object"
+              ? reservationResult.expires_at ?? null
+              : null,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    } catch (stockError) {
       await supabase.from("orders").delete().eq("id", createdOrder.id);
+      if (stockError instanceof Error && /stock|reservation|reservable/i.test(stockError.message)) {
+        throw new HttpError(stockError.message, 409);
+      }
       throw stockError;
     }
-
-    return new Response(
-      JSON.stringify({ order: createdOrder, reused: false }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
   } catch (error) {
     const errorStatus = error instanceof HttpError ? error.status : 500;
     return new Response(

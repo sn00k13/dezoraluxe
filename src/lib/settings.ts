@@ -20,6 +20,7 @@ export interface DisplaySettings {
 	itemsPerPage: number;
 	dateFormat: string;
 	theme: string;
+	siteUnderConstruction: boolean;
 }
 
 export interface SecuritySettings {
@@ -33,6 +34,8 @@ export interface AdminSettings {
 	display: DisplaySettings;
 	security: SecuritySettings;
 }
+
+export const ADMIN_SETTINGS_UPDATED_EVENT = 'admin-settings-updated';
 
 interface ToastLike {
 	info: (message: string, options?: { title?: string }) => void;
@@ -57,6 +60,7 @@ const DEFAULT_SETTINGS: AdminSettings = {
 		itemsPerPage: 20,
 		dateFormat: 'MM/DD/YYYY',
 		theme: 'dark',
+		siteUnderConstruction: true,
 	},
 	security: {
 		twoFactorAuth: false,
@@ -72,7 +76,26 @@ export const loadSettings = (): AdminSettings => {
 		const saved = localStorage.getItem('adminSettings');
 		if (saved) {
 			const parsed = JSON.parse(saved);
-			return { ...DEFAULT_SETTINGS, ...parsed };
+			return {
+				...DEFAULT_SETTINGS,
+				...parsed,
+				notifications: {
+					...DEFAULT_SETTINGS.notifications,
+					...parsed.notifications,
+				},
+				store: {
+					...DEFAULT_SETTINGS.store,
+					...parsed.store,
+				},
+				display: {
+					...DEFAULT_SETTINGS.display,
+					...parsed.display,
+				},
+				security: {
+					...DEFAULT_SETTINGS.security,
+					...parsed.security,
+				},
+			};
 		}
 	} catch (error) {
 		console.error('Error loading settings:', error);
@@ -86,6 +109,9 @@ export const loadSettings = (): AdminSettings => {
 export const saveSettings = async (settings: AdminSettings): Promise<boolean> => {
 	try {
 		localStorage.setItem('adminSettings', JSON.stringify(settings));
+		if (typeof window !== 'undefined') {
+			window.dispatchEvent(new Event(ADMIN_SETTINGS_UPDATED_EVENT));
+		}
 		
 		// Also try to save to Supabase if user is authenticated
 		const { data: { user } } = await supabase.auth.getUser();

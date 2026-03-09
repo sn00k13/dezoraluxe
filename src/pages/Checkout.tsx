@@ -176,7 +176,6 @@ const Checkout = () => {
 	const [showNewAddressForm, setShowNewAddressForm] = useState(false);
 	const [isLoadingAddresses, setIsLoadingAddresses] = useState(false);
 	const [isSavingAddress, setIsSavingAddress] = useState(false);
-	const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
 	const [checkoutTracked, setCheckoutTracked] = useState(false);
 	const [discountCodeInput, setDiscountCodeInput] = useState('');
 	const [appliedDiscountCode, setAppliedDiscountCode] = useState<DiscountCode | null>(
@@ -186,6 +185,7 @@ const Checkout = () => {
 	const [isApplyingDiscount, setIsApplyingDiscount] = useState(false);
 	const [discountUsageLocked, setDiscountUsageLocked] = useState(false);
 	const paymentIdempotencyKeyRef = useRef<string | null>(null);
+	const pendingOrderIdRef = useRef<string | null>(null);
 	const hasRestoredDraftRef = useRef(false);
 
 	// Restore guest checkout draft from localStorage when returning to checkout
@@ -736,40 +736,56 @@ const Checkout = () => {
 		}
 	};
 
-	const updateOrderStatus = async (orderId: string, paymentReference: string, status: string = 'processing') => {
+	const confirmOrderPayment = async (
+		orderId: string,
+		idempotencyKey: string,
+		paymentReference: string
+	) => {
 		try {
-			// Get current user to ensure we can update (for RLS)
-			const { data: { user: authUser } } = await supabase.auth.getUser();
-			
-			const { data, error } = await supabase
-				.from('orders')
-				.update({
-					status,
-					payment_reference: paymentReference,
-					updated_at: new Date().toISOString(),
-				})
-				.eq('id', orderId)
-				.select()
-				.single();
+			const { data, error } = await supabase.functions.invoke(
+				'confirm-order-payment',
+				{
+					body: {
+						orderId,
+						idempotencyKey,
+						paymentReference,
+					},
+				}
+			);
 
 			if (error) {
-				console.error('Order update error details:', {
-					code: error.code,
-					message: error.message,
-					orderId,
-					authUser: authUser?.id,
-				});
 				throw error;
 			}
 
-			if (!data) {
-				throw new Error('Order update returned no data');
+			if (!data?.order?.id) {
+				throw new Error('Order confirmation returned invalid response');
 			}
 
-			return data;
+			return data.order;
 		} catch (error) {
-			console.error('Error updating order:', error);
+			console.error('Error confirming order payment:', error);
 			throw error;
+		}
+	};
+
+	const cancelPendingOrder = async (orderId: string | null, idempotencyKey: string | null) => {
+		if (!orderId || !idempotencyKey) return;
+
+		try {
+			const { error } = await supabase.functions.invoke('cancel-order', {
+				body: {
+					orderId,
+					idempotencyKey,
+				},
+			});
+
+			if (error) {
+				throw error;
+			}
+		} catch (error) {
+			console.error('Error cancelling pending order:', error);
+		} finally {
+			pendingOrderIdRef.current = null;
 		}
 	};
 
@@ -778,6 +794,7 @@ const Checkout = () => {
 
 		setIsProcessingPayment(true);
 		const finalTotal = Math.max(0, preDiscountTotal - discountAmount);
+		let currentOrderId: string | null = null;
 
 		try {
 			// Create order before payment with pending status
@@ -787,11 +804,13 @@ const Checkout = () => {
 			paymentIdempotencyKeyRef.current = idempotencyKey;
 			try {
 				order = await createOrder(idempotencyKey, finalTotal, preDiscountTotal);
-				setPendingOrderId(order.id);
+				currentOrderId = order.id;
+				pendingOrderIdRef.current = order.id;
 				toast.success('Order created. Processing payment...');
 			} catch (error) {
 				console.error('Error creating order:', error);
 				toast.error('Failed to create order. Please try again.');
+				paymentIdempotencyKeyRef.current = null;
 				setIsProcessingPayment(false);
 				return;
 			}
@@ -831,24 +850,29 @@ const Checkout = () => {
 							variable_name: 'discount_code',
 							value: appliedDiscountCode?.code || 'None',
 						},
+						{
+							display_name: 'Order ID',
+							variable_name: 'order_id',
+							value: order.id,
+						},
+						{
+							display_name: 'Order Token',
+							variable_name: 'order_token',
+							value: idempotencyKey,
+						},
 					],
 				},
 				async (response) => {
-					// Payment successful - update order status
+					// Payment successful - confirm reservation and convert stock
 					try {
-						const updatedOrder = await updateOrderStatus(
+						const updatedOrder = await confirmOrderPayment(
 							order.id,
-							response.reference,
-							'processing'
+							idempotencyKey,
+							response.reference
 						);
 
-						if (appliedDiscountCode) {
-							await supabase.rpc('increment_discount_code_usage', {
-								p_code_id: appliedDiscountCode.id,
-							});
-						}
-
 						setDiscountUsageLocked(false);
+						pendingOrderIdRef.current = null;
 
 						void trackAnalyticsEvent({
 							eventName: 'paid_order',
@@ -895,18 +919,7 @@ const Checkout = () => {
 					}
 				},
 				async () => {
-					// Payment cancelled - delete the pending order
-					if (order?.id) {
-						try {
-							// Delete order items first (due to foreign key constraints)
-							await supabase.from('order_items').delete().eq('order_id', order.id);
-							// Then delete the order
-							await supabase.from('orders').delete().eq('id', order.id);
-							setPendingOrderId(null);
-						} catch (error) {
-							console.error('Error deleting pending order:', error);
-						}
-					}
+					await cancelPendingOrder(order?.id ?? null, idempotencyKey);
 					toast.error('Payment was cancelled');
 					paymentIdempotencyKeyRef.current = null;
 					setIsProcessingPayment(false);
@@ -915,18 +928,7 @@ const Checkout = () => {
 		} catch (error) {
 			console.error('Payment error:', error);
 			toast.error('An error occurred while processing payment');
-			// Clean up pending order if it was created
-			if (pendingOrderId) {
-				try {
-					// Delete order items first (due to foreign key constraints)
-					await supabase.from('order_items').delete().eq('order_id', pendingOrderId);
-					// Then delete the order
-					await supabase.from('orders').delete().eq('id', pendingOrderId);
-					setPendingOrderId(null);
-				} catch (cleanupError) {
-					console.error('Error cleaning up pending order:', cleanupError);
-				}
-			}
+			await cancelPendingOrder(currentOrderId, paymentIdempotencyKeyRef.current);
 			paymentIdempotencyKeyRef.current = null;
 			setIsProcessingPayment(false);
 		}

@@ -3249,6 +3249,33 @@ const AdminDashboard = () => {
 										</Select>
 									</div>
 								</div>
+
+								<Separator />
+
+								<div className="flex items-center justify-between gap-6">
+									<div className="space-y-0.5">
+										<Label htmlFor="siteUnderConstruction">
+											Site Under Construction
+										</Label>
+										<p className="text-sm text-muted-foreground">
+											When enabled, shoppers see the under construction page while admin
+											routes remain accessible.
+										</p>
+									</div>
+									<Switch
+										id="siteUnderConstruction"
+										checked={settings.display.siteUnderConstruction}
+										onCheckedChange={(checked) =>
+											setSettings({
+												...settings,
+												display: {
+													...settings.display,
+													siteUnderConstruction: checked,
+												},
+											})
+										}
+									/>
+								</div>
 							</CardContent>
 						</Card>
 
@@ -3617,6 +3644,9 @@ const AdminDashboard = () => {
 									<CardContent className="space-y-1">
 										<p className="text-sm text-muted-foreground">
 											Email: {getCustomerEmail(selectedOrder)}
+										</p>
+										<p className="text-sm text-muted-foreground">
+											Phone: {getCustomerPhone(selectedOrder)}
 										</p>
 										{typeof selectedOrder.shipping_address === 'object' &&
 										selectedOrder.shipping_address ? (

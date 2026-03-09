@@ -24,6 +24,37 @@ interface PaystackWebhookEvent {
   }
 }
 
+class HttpError extends Error {
+  status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
+  }
+}
+
+const getMetadataField = (
+  customFields: PaystackWebhookEvent['data']['metadata'] extends { custom_fields?: infer T } ? T : never,
+  variableName: string
+) => {
+  return customFields?.find((field) => field.variable_name === variableName)?.value?.trim() ?? null
+}
+
+const maybeApplyDiscountUsage = async (
+  supabase: ReturnType<typeof createClient>,
+  discountCodeId: string | null | undefined
+) => {
+  if (!discountCodeId) return
+
+  const { error } = await supabase.rpc('increment_discount_code_usage', {
+    p_code_id: discountCodeId,
+  })
+
+  if (error) {
+    console.error('Failed to increment discount code usage:', error)
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -122,6 +153,10 @@ serve(async (req) => {
       )
     }
 
+    const customFields = metadata?.custom_fields ?? []
+    const orderIdFromMetadata = getMetadataField(customFields, 'order_id')
+    const orderTokenFromMetadata = getMetadataField(customFields, 'order_token')
+
     // Check if order already exists with this payment reference
     const { data: existingOrder, error: checkError } = await supabase
       .from('orders')
@@ -143,19 +178,26 @@ serve(async (req) => {
       )
     }
 
-    // If order exists but is still pending, update it to processing
+    // If order exists but is still pending, confirm the reservation.
     if (existingOrder) {
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update({
-          status: 'processing',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', existingOrder.id)
+      const { data: confirmationResult, error: confirmationError } = await supabase.rpc(
+        'confirm_order_stock_reservations',
+        {
+          p_order_id: existingOrder.id,
+          p_payment_reference: reference,
+        }
+      )
 
-      if (updateError) {
-        console.error('Error updating order:', updateError)
-        throw updateError
+      if (confirmationError) {
+        throw confirmationError
+      }
+
+      if (
+        confirmationResult &&
+        typeof confirmationResult === 'object' &&
+        confirmationResult.just_confirmed === true
+      ) {
+        await maybeApplyDiscountUsage(supabase, confirmationResult.discount_code_id)
       }
 
       console.log('Order updated to processing:', existingOrder.id)
@@ -169,58 +211,72 @@ serve(async (req) => {
       )
     }
 
-    // If order doesn't exist, try to find a pending order by email
-    // This handles cases where webhook arrives before client-side order creation
-    const { data: pendingOrders, error: pendingError } = await supabase
-      .from('orders')
-      .select('id, user_id, status')
-      .eq('status', 'pending')
-      .order('created_at', { ascending: false })
-      .limit(5)
+    if (orderIdFromMetadata) {
+      const { data: metadataOrder, error: metadataOrderError } = await supabase
+        .from('orders')
+        .select('id, status, payment_reference, idempotency_key')
+        .eq('id', orderIdFromMetadata)
+        .maybeSingle<{
+          id: string
+          status: string
+          payment_reference: string | null
+          idempotency_key: string
+        }>()
 
-    if (pendingError) {
-      console.error('Error finding pending orders:', pendingError)
-    }
-
-    // Try to match by user email if we have pending orders
-    if (pendingOrders && pendingOrders.length > 0) {
-      // Get user by email to match orders
-      const { data: userData } = await supabase.auth.admin.listUsers()
-      const user = userData?.users.find(u => u.email === customer.email)
-      
-      if (user) {
-        // Find pending order for this user
-        const userPendingOrder = pendingOrders.find(o => o.user_id === user.id)
-        
-        if (userPendingOrder) {
-          const { error: updateError } = await supabase
-            .from('orders')
-            .update({
-              payment_reference: reference,
-              status: 'processing',
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', userPendingOrder.id)
-
-          if (!updateError) {
-            console.log('Order updated with payment reference:', userPendingOrder.id)
-            return new Response(
-              JSON.stringify({ 
-                message: 'Order updated successfully', 
-                orderId: userPendingOrder.id 
-              }),
-              { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
-          }
-        }
+      if (metadataOrderError) {
+        throw metadataOrderError
       }
+
+      if (!metadataOrder) {
+        throw new HttpError('No matching order found for webhook metadata', 404)
+      }
+
+      if (
+        orderTokenFromMetadata &&
+        metadataOrder.idempotency_key !== orderTokenFromMetadata
+      ) {
+        throw new HttpError('Webhook order token did not match the stored order', 400)
+      }
+
+      const { data: confirmationResult, error: confirmationError } = await supabase.rpc(
+        'confirm_order_stock_reservations',
+        {
+          p_order_id: metadataOrder.id,
+          p_payment_reference: reference,
+        }
+      )
+
+      if (confirmationError) {
+        const message = confirmationError.message ?? 'Failed to confirm order'
+        if (/reservation|payment confirmation|stock/i.test(message)) {
+          throw new HttpError(message, 409)
+        }
+        throw confirmationError
+      }
+
+      if (
+        confirmationResult &&
+        typeof confirmationResult === 'object' &&
+        confirmationResult.just_confirmed === true
+      ) {
+        await maybeApplyDiscountUsage(supabase, confirmationResult.discount_code_id)
+      }
+
+      return new Response(
+        JSON.stringify({
+          message: 'Order confirmed from webhook metadata',
+          orderId: metadataOrder.id,
+          status: 'processing',
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
-    // If no order found, log it (order should be created client-side)
-    console.log('No matching order found for payment reference:', reference)
+    // If no order found, log it for investigation.
+    console.log('No matching order found for payment reference:', reference, 'customer:', customer.email)
     return new Response(
       JSON.stringify({ 
-        message: 'Webhook received but no matching order found. Order will be created client-side.',
+        message: 'Webhook received but no matching order found.',
         reference 
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -228,9 +284,10 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Webhook error:', error)
+    const status = error instanceof HttpError ? error.status : 500
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 })
