@@ -270,7 +270,7 @@ const ProductDetail = () => {
 									/>
 								</div>
 								{galleryItems.length > 1 && (
-									<div className="flex gap-4 overflow-x-auto pb-2">
+									<div className="w-full min-w-0 max-w-full overflow-x-auto overflow-y-hidden pb-2 flex gap-4 snap-x snap-mandatory md:snap-none scroll-smooth [scrollbar-width:thin]">
 										{galleryItems.map((item, index) => (
 											<button
 												key={`${item.src}-${index}`}
@@ -280,7 +280,7 @@ const ProductDetail = () => {
 														setSelectedColor(item.color);
 													}
 												}}
-												className={`aspect-square w-24 shrink-0 overflow-hidden rounded-sm border-2 transition-all ${
+												className={`aspect-square w-20 shrink-0 snap-center overflow-hidden rounded-sm border-2 transition-all md:w-24 ${
 													selectedImage === index
 														? 'border-gold'
 														: 'border-border hover:border-gold/50'

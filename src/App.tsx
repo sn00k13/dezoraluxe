@@ -67,13 +67,34 @@ const ScrollToTop = () => {
   return null;
 };
 
+const SITE_MODE_KEY = "site_under_construction";
+
+// Only trust cached "false" (site live) - never show coming soon from cache,
+// since admin may have just disabled it on another device
+const getInitialSiteMode = (): boolean | null => {
+  try {
+    const cached = sessionStorage.getItem(SITE_MODE_KEY);
+    if (cached === "false") return false;
+  } catch {
+    /* ignore */
+  }
+  return null;
+};
+
 const AppRoutes = () => {
-  const [siteUnderConstruction, setSiteUnderConstruction] = useState(true);
+  const [siteUnderConstruction, setSiteUnderConstruction] = useState<boolean | null>(
+    getInitialSiteMode
+  );
 
   useEffect(() => {
     const syncSiteMode = async () => {
       const value = await getSiteUnderConstruction();
       setSiteUnderConstruction(value);
+      try {
+        sessionStorage.setItem(SITE_MODE_KEY, String(value));
+      } catch {
+        /* ignore */
+      }
     };
 
     const handleSettingsUpdated: EventListener = () => {
@@ -89,6 +110,12 @@ const AppRoutes = () => {
       window.removeEventListener(ADMIN_SETTINGS_UPDATED_EVENT, handleSettingsUpdated);
     };
   }, []);
+
+  if (siteUnderConstruction === null) {
+    return (
+      <div className="min-h-screen bg-background" aria-hidden="true" />
+    );
+  }
 
   return (
     <Routes>
