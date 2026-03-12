@@ -69,6 +69,44 @@ const DEFAULT_SETTINGS: AdminSettings = {
 };
 
 /**
+ * Fetch site_under_construction from Supabase (source of truth across devices)
+ * Falls back to true on error (safe default)
+ */
+export const getSiteUnderConstruction = async (): Promise<boolean> => {
+	try {
+		const { data, error } = await supabase
+			.from('site_settings')
+			.select('site_under_construction')
+			.eq('id', 1)
+			.maybeSingle();
+
+		if (error) throw error;
+		return data?.site_under_construction ?? true;
+	} catch (error) {
+		console.error('Error fetching site_under_construction:', error);
+		return true;
+	}
+};
+
+/**
+ * Persist site_under_construction to Supabase (admin only, RLS enforced)
+ */
+export const setSiteUnderConstruction = async (value: boolean): Promise<boolean> => {
+	try {
+		const { error } = await supabase
+			.from('site_settings')
+			.update({ site_under_construction: value, updated_at: new Date().toISOString() })
+			.eq('id', 1);
+
+		if (error) throw error;
+		return true;
+	} catch (error) {
+		console.error('Error saving site_under_construction:', error);
+		return false;
+	}
+};
+
+/**
  * Load settings from localStorage or return defaults
  */
 export const loadSettings = (): AdminSettings => {
@@ -108,27 +146,26 @@ export const loadSettings = (): AdminSettings => {
  */
 export const saveSettings = async (settings: AdminSettings): Promise<boolean> => {
 	try {
+		// Persist site_under_construction to Supabase first (cross-device source of truth)
+		const saved = await setSiteUnderConstruction(settings.display.siteUnderConstruction);
+		if (!saved) {
+			console.warn('Failed to persist site_under_construction to Supabase');
+		}
+
 		localStorage.setItem('adminSettings', JSON.stringify(settings));
 		if (typeof window !== 'undefined') {
 			window.dispatchEvent(new Event(ADMIN_SETTINGS_UPDATED_EVENT));
 		}
-		
-		// Also try to save to Supabase if user is authenticated
+
+		// Also try to save to Supabase if user is authenticated (legacy user_profiles update)
 		const { data: { user } } = await supabase.auth.getUser();
 		if (user) {
-			// Save to user_profiles or a settings table
-			const { error } = await supabase
+			await supabase
 				.from('user_profiles')
-				.update({
-					updated_at: new Date().toISOString(),
-				})
+				.update({ updated_at: new Date().toISOString() })
 				.eq('id', user.id);
-			
-			if (error) {
-				console.error('Error saving settings to database:', error);
-			}
 		}
-		
+
 		return true;
 	} catch (error) {
 		console.error('Error saving settings:', error);

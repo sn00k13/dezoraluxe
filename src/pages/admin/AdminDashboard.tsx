@@ -82,6 +82,7 @@ import DiscountCodesManager from '@/components/admin/DiscountCodesManager';
 import {
 	saveSettings,
 	loadSettings,
+	getSiteUnderConstruction,
 	formatDate,
 	formatCurrency,
 	getItemsPerPage,
@@ -242,9 +243,16 @@ const AdminDashboard = () => {
 				localStorage.setItem('adminAuthenticated', 'true');
 			}
 
-			// Load saved settings
+			// Load saved settings (site_under_construction from Supabase for cross-device sync)
 			const savedSettings = loadSettings();
-			setSettings(savedSettings);
+			const siteUnderConstruction = await getSiteUnderConstruction();
+			setSettings({
+				...savedSettings,
+				display: {
+					...savedSettings.display,
+					siteUnderConstruction,
+				},
+			});
 
 			// Load data when component mounts
 			loadDashboardData();

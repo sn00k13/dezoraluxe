@@ -15,7 +15,10 @@ import { CartProvider } from "@/contexts/CartContext";
 import { CookieConsentProvider } from "@/contexts/CookieConsentContext";
 import { CookieBanner } from "@/components/CookieBanner";
 import { CookiePreferencesDialog } from "@/components/CookiePreferences";
-import { ADMIN_SETTINGS_UPDATED_EVENT, loadSettings } from "@/lib/settings";
+import {
+  ADMIN_SETTINGS_UPDATED_EVENT,
+  getSiteUnderConstruction,
+} from "@/lib/settings";
 import Index from "./pages/Index";
 import NewArrivals from "./pages/NewArrivals";
 import BestSellers from "./pages/BestSellers";
@@ -65,13 +68,12 @@ const ScrollToTop = () => {
 };
 
 const AppRoutes = () => {
-  const [siteUnderConstruction, setSiteUnderConstruction] = useState(
-    () => loadSettings().display.siteUnderConstruction
-  );
+  const [siteUnderConstruction, setSiteUnderConstruction] = useState(true);
 
   useEffect(() => {
-    const syncSiteMode = () => {
-      setSiteUnderConstruction(loadSettings().display.siteUnderConstruction);
+    const syncSiteMode = async () => {
+      const value = await getSiteUnderConstruction();
+      setSiteUnderConstruction(value);
     };
 
     const handleSettingsUpdated: EventListener = () => {
@@ -79,11 +81,11 @@ const AppRoutes = () => {
     };
 
     syncSiteMode();
-    window.addEventListener("storage", syncSiteMode);
+    window.addEventListener("storage", handleSettingsUpdated);
     window.addEventListener(ADMIN_SETTINGS_UPDATED_EVENT, handleSettingsUpdated);
 
     return () => {
-      window.removeEventListener("storage", syncSiteMode);
+      window.removeEventListener("storage", handleSettingsUpdated);
       window.removeEventListener(ADMIN_SETTINGS_UPDATED_EVENT, handleSettingsUpdated);
     };
   }, []);
