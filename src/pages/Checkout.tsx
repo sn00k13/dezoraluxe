@@ -146,6 +146,9 @@ const Checkout = () => {
 		clearCart,
 	} = useCart();
 	const checkoutContentRef = useRef<HTMLDivElement>(null);
+	const shippingSectionRef = useRef<HTMLDivElement>(null);
+	const deliverySectionRef = useRef<HTMLDivElement>(null);
+	const paymentSectionRef = useRef<HTMLDivElement>(null);
 	const isInitialMountRef = useRef(true);
 	const [currentStage, setCurrentStage] = useState<
 		'email' | 'shipping' | 'delivery' | 'payment'
@@ -288,25 +291,25 @@ const Checkout = () => {
 		}
 
 		// Small delay to ensure DOM has updated after stage change
+		// Payment section needs slightly longer delay as it mounts conditionally
+		const delay = currentStage === 'payment' ? 250 : 150;
 		const timer = setTimeout(() => {
-			// On mobile, always scroll to top of page to ensure all content is visible
-			// On desktop, scroll to checkout content section
-			if (window.innerWidth < 1024) {
-				// Mobile: scroll to top of page
-				window.scrollTo({
-					top: 0,
+			// Scroll to the active section based on current stage
+			const targetRef =
+				currentStage === 'payment'
+					? paymentSectionRef
+					: currentStage === 'delivery'
+						? deliverySectionRef
+						: currentStage === 'shipping'
+							? shippingSectionRef
+							: checkoutContentRef;
+			if (targetRef.current) {
+				targetRef.current.scrollIntoView({
 					behavior: 'smooth',
+					block: currentStage === 'payment' ? 'center' : 'start',
 				});
-			} else {
-				// Desktop: scroll to checkout content section
-				if (checkoutContentRef.current) {
-					checkoutContentRef.current.scrollIntoView({
-						behavior: 'smooth',
-						block: 'start',
-					});
-				}
 			}
-		}, 150);
+		}, delay);
 
 		return () => clearTimeout(timer);
 	}, [currentStage]);
@@ -1099,6 +1102,7 @@ const Checkout = () => {
 								{(currentStage === 'shipping' ||
 									currentStage === 'delivery' ||
 									currentStage === 'payment') && (
+									<div ref={shippingSectionRef}>
 									<Card className="border-border">
 										<Collapsible
 											open={isShippingOpen}
@@ -1400,11 +1404,13 @@ const Checkout = () => {
 											</CollapsibleContent>
 										</Collapsible>
 									</Card>
+									</div>
 								)}
 
 								{/* Stage 3: Delivery Method */}
 								{(currentStage === 'delivery' ||
 									currentStage === 'payment') && (
+									<div ref={deliverySectionRef}>
 									<Card className="border-border">
 										<CardHeader>
 											<CardTitle className="flex items-center gap-2">
@@ -1469,10 +1475,12 @@ const Checkout = () => {
 											)}
 										</CardContent>
 									</Card>
+									</div>
 								)}
 
 								{/* Stage 4: Payment */}
 								{currentStage === 'payment' && (
+									<div ref={paymentSectionRef}>
 									<Card className="border-border">
 										<CardHeader>
 											<CardTitle className="flex items-center gap-2">
@@ -1554,6 +1562,7 @@ const Checkout = () => {
 											</Button>
 										</CardContent>
 									</Card>
+									</div>
 								)}
 							</div>
 

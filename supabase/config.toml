@@ -1,0 +1,14 @@
+# Allow guest checkout - these functions handle both anon and authenticated users
+# and perform their own auth resolution from the Authorization header
+[functions.create-order]
+verify_jwt = false
+
+[functions.confirm-order-payment]
+verify_jwt = false
+
+[functions.cancel-order]
+verify_jwt = false
+
+# Paystack sends webhooks without Supabase JWTs
+[functions.paystack-webhook]
+verify_jwt = false
