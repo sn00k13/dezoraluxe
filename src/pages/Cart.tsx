@@ -152,11 +152,7 @@ const Cart = () => {
 																			!item.product ||
 																			item.quantity >= (item.variant_stock ?? item.product.stock)
 																		}
-																		title={
-																			item.quantity >= (item.variant_stock ?? item.product?.stock ?? 0)
-																				? 'Maximum stock reached'
-																				: 'Increase quantity'
-																		}
+																		title="Increase quantity"
 																	>
 																		<Plus className="h-4 w-4" />
 																	</Button>

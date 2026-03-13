@@ -252,7 +252,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
 				: { data: null };
 
 			if (variant && quantity > variant.stock) {
-				toast.error(`Only ${variant.stock} left for this variant`);
 				return;
 			}
 
@@ -272,7 +271,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
 				const nextQuantity = (existing?.quantity ?? 0) + quantity;
 
 				if (variant && nextQuantity > variant.stock) {
-					toast.error(`Only ${variant.stock} left for this variant`);
 					return;
 				}
 
@@ -372,7 +370,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
 				if (existingIndex >= 0) {
 					if (variant && cart[existingIndex].quantity + quantity > variant.stock) {
-						toast.error(`Only ${variant.stock} left for this variant`);
 						return;
 					}
 					cart[existingIndex].quantity += quantity;
