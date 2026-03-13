@@ -105,6 +105,29 @@ import {
 	SheetTitle,
 } from '@/components/ui/sheet';
 
+const ORDER_STATUSES: Order['status'][] = [
+	'pending',
+	'processing',
+	'shipped',
+	'delivered',
+	'cancelled',
+];
+
+const getStatusBadgeClass = (status: Order['status']) => {
+	switch (status) {
+		case 'delivered':
+			return 'bg-green-500/20 text-green-500';
+		case 'shipped':
+			return 'bg-blue-500/20 text-blue-500';
+		case 'processing':
+			return 'bg-yellow-500/20 text-yellow-500';
+		case 'cancelled':
+			return 'bg-red-500/20 text-red-500';
+		default:
+			return 'bg-gray-500/20 text-gray-500';
+	}
+};
+
 const AdminDashboard = () => {
 	const navigate = useNavigate();
 	const [activeTab, setActiveTab] = useState('overview');
@@ -792,6 +815,11 @@ const AdminDashboard = () => {
 			toast.success('Order status updated');
 			loadOrders();
 			loadStats();
+			if (selectedOrder?.id === orderId) {
+				setSelectedOrder((prev) =>
+					prev ? { ...prev, status: newStatus, updated_at: new Date().toISOString() } : null
+				);
+			}
 		} catch (error) {
 			console.error('Error updating order status:', error);
 			toast.error('Failed to update order status');
@@ -1615,19 +1643,27 @@ const AdminDashboard = () => {
 													{formatPrice(Number(order.total_amount))}
 												</TableCell>
 												<TableCell>
-													<span
-														className={`px-2 py-1 rounded-full text-xs ${
-															order.status === 'delivered'
-																? 'bg-green-500/20 text-green-500'
-																: order.status === 'shipped'
-																? 'bg-blue-500/20 text-blue-500'
-																: order.status === 'processing'
-																? 'bg-yellow-500/20 text-yellow-500'
-																: 'bg-gray-500/20 text-gray-500'
-														}`}
+													<Select
+														value={order.status}
+														onValueChange={(v) =>
+															handleUpdateOrderStatus(order.id, v as Order['status'])
+														}
 													>
-														{order.status}
-													</span>
+														<SelectTrigger
+															className={`h-8 w-[120px] px-2 text-xs font-medium ${
+																getStatusBadgeClass(order.status)
+															}`}
+														>
+															<SelectValue />
+														</SelectTrigger>
+														<SelectContent>
+															{ORDER_STATUSES.map((s) => (
+																<SelectItem key={s} value={s}>
+																	{s}
+																</SelectItem>
+															))}
+														</SelectContent>
+													</Select>
 												</TableCell>
 												<TableCell>
 													{formatDate(
@@ -1794,19 +1830,27 @@ const AdminDashboard = () => {
 														{formatPrice(Number(order.total_amount))}
 													</TableCell>
 													<TableCell>
-														<span
-															className={`px-2 py-1 rounded-full text-xs ${
-																order.status === 'delivered'
-																	? 'bg-green-500/20 text-green-500'
-																	: order.status === 'shipped'
-																	? 'bg-blue-500/20 text-blue-500'
-																	: order.status === 'processing'
-																	? 'bg-yellow-500/20 text-yellow-500'
-																	: 'bg-gray-500/20 text-gray-500'
-															}`}
+														<Select
+															value={order.status}
+															onValueChange={(v) =>
+																handleUpdateOrderStatus(order.id, v as Order['status'])
+															}
 														>
-															{order.status}
-														</span>
+															<SelectTrigger
+																className={`h-8 w-[120px] px-2 text-xs font-medium ${
+																	getStatusBadgeClass(order.status)
+																}`}
+															>
+																<SelectValue />
+															</SelectTrigger>
+															<SelectContent>
+																{ORDER_STATUSES.map((s) => (
+																	<SelectItem key={s} value={s}>
+																		{s}
+																	</SelectItem>
+																))}
+															</SelectContent>
+														</Select>
 													</TableCell>
 													<TableCell>
 														{formatDate(
@@ -3601,21 +3645,29 @@ const AdminDashboard = () => {
 											<span className="text-muted-foreground">Order Number:</span>
 											<span className="font-medium">{selectedOrder.order_number}</span>
 										</div>
-										<div className="flex justify-between">
+										<div className="flex justify-between items-center gap-2">
 											<span className="text-muted-foreground">Status:</span>
-											<span
-												className={`px-2 py-1 rounded-full text-xs ${
-													selectedOrder.status === 'delivered'
-														? 'bg-green-500/20 text-green-500'
-														: selectedOrder.status === 'shipped'
-														? 'bg-blue-500/20 text-blue-500'
-														: selectedOrder.status === 'processing'
-														? 'bg-yellow-500/20 text-yellow-500'
-														: 'bg-gray-500/20 text-gray-500'
-												}`}
+											<Select
+												value={selectedOrder.status}
+												onValueChange={(v) =>
+													handleUpdateOrderStatus(selectedOrder.id, v as Order['status'])
+												}
 											>
-												{selectedOrder.status}
-											</span>
+												<SelectTrigger
+													className={`w-[130px] h-9 px-2 text-xs font-medium ${
+														getStatusBadgeClass(selectedOrder.status)
+													}`}
+												>
+													<SelectValue />
+												</SelectTrigger>
+												<SelectContent>
+													{ORDER_STATUSES.map((s) => (
+														<SelectItem key={s} value={s}>
+															{s}
+														</SelectItem>
+													))}
+												</SelectContent>
+											</Select>
 										</div>
 										<div className="flex justify-between">
 											<span className="text-muted-foreground">Date:</span>
