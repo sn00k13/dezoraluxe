@@ -3785,6 +3785,16 @@ const AdminDashboard = () => {
 														<p className="text-sm text-muted-foreground">
 															Quantity: {item.quantity}
 														</p>
+														<div className="flex flex-wrap gap-x-3 gap-y-0.5 text-sm text-muted-foreground">
+															<span>
+																<span className="font-medium text-foreground">Color:</span>{' '}
+																{item.selected_color || '—'}
+															</span>
+															<span>
+																<span className="font-medium text-foreground">Size:</span>{' '}
+																{item.selected_size || '—'}
+															</span>
+														</div>
 														<p className="text-sm text-muted-foreground">
 															Price: {formatPrice(item.price)} each
 														</p>
