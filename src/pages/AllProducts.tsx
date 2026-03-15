@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import Navbar from '@/components/layout/NavBar';
 import Footer from '@/components/layout/Footer';
 import ProductCard from '@/components/ProductCard';
+import ProductSearchInput from '@/components/ProductSearchInput';
 import { Button } from '@/components/ui/button';
 import {
 	Select,
@@ -16,7 +17,7 @@ import { supabase } from '@/lib/supabase';
 import type { Product, Category } from '@/types/database';
 
 const AllProducts = () => {
-	const [searchParams] = useSearchParams();
+	const [searchParams, setSearchParams] = useSearchParams();
 	const searchQuery = searchParams.get('search') || '';
 	const [selectedCategory, setSelectedCategory] = useState<string>('all');
 	const [sortBy, setSortBy] = useState<string>('featured');
@@ -117,9 +118,22 @@ const AllProducts = () => {
 				<section className="py-8 border-b border-border bg-card">
 					<div className="container mx-auto px-6">
 						<div className="flex flex-col md:flex-row items-center justify-between gap-4">
-							<div className="flex items-center gap-4">
-								<SlidersHorizontal className="h-5 w-5 text-muted-foreground" />
-								<span className="text-sm font-medium text-foreground">Filters:</span>
+							<div className="flex flex-wrap items-center gap-4 w-full md:w-auto">
+								<SlidersHorizontal className="h-5 w-5 text-muted-foreground shrink-0" />
+								<ProductSearchInput
+									value={searchQuery}
+									onChange={(q) =>
+										setSearchParams((prev) => {
+											const next = new URLSearchParams(prev);
+											if (q) next.set('search', q);
+											else next.delete('search');
+											return next;
+										})
+									}
+									placeholder="Search all products..."
+									className="flex-1 min-w-0 md:max-w-xs"
+								/>
+								<span className="text-sm font-medium text-foreground shrink-0">Filters:</span>
 							<Select value={selectedCategory} onValueChange={setSelectedCategory}>
 								<SelectTrigger className="w-[180px]">
 									<SelectValue placeholder="Category" />
@@ -195,12 +209,21 @@ const AllProducts = () => {
 						) : (
 							<div className="text-center py-16">
 								<p className="text-lg text-muted-foreground">
-									No products found in this category.
+									{searchQuery
+										? `No products found matching "${searchQuery}".`
+										: 'No products found in this category.'}
 								</p>
 								<Button
 									variant="outline"
 									className="mt-4"
-									onClick={() => setSelectedCategory('all')}
+									onClick={() => {
+										setSelectedCategory('all');
+										setSearchParams((prev) => {
+											const next = new URLSearchParams(prev);
+											next.delete('search');
+											return next;
+										});
+									}}
 								>
 									View All Products
 								</Button>

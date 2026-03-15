@@ -176,19 +176,19 @@ const SearchBar = () => {
 				if (supabaseUrl) {
 					const { data, error } = await supabase
 						.from('products')
-						.select('id, name, category, price, image_url')
+						.select('id, name, category, price, images')
 						.or(
 							`name.ilike.%${searchQuery}%,category.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`
 						)
 						.limit(10);
 
 					if (!error && data) {
-						const formattedResults = data.map((product) => ({
+						const formattedResults = data.map((product: { id: string; name: string; category: string; price: number; images?: string[] }) => ({
 							id: product.id,
 							name: product.name,
 							category: product.category,
 							price: product.price,
-							image: product.image_url || '',
+							image: Array.isArray(product.images) && product.images.length > 0 ? product.images[0] : '',
 						}));
 						setSearchResults(formattedResults);
 						setLoading(false);
@@ -238,7 +238,7 @@ const SearchBar = () => {
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
-				<Button variant="ghost" size="icon" className="hidden md:flex">
+				<Button variant="ghost" size="icon">
 					<Search className="h-5 w-5" />
 				</Button>
 			</PopoverTrigger>

@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import Navbar from '@/components/layout/NavBar';
 import Footer from '@/components/layout/Footer';
 import ProductCard from '@/components/ProductCard';
+import ProductSearchInput from '@/components/ProductSearchInput';
 import { supabase } from '@/lib/supabase';
 import type { Product, Category } from '@/types/database';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from '@/components/ui/select';
+import { SlidersHorizontal } from 'lucide-react';
 
 const CollectionDetail = () => {
 	const { categoryName } = useParams<{ categoryName: string }>();
@@ -20,6 +22,7 @@ const CollectionDetail = () => {
 	const [category, setCategory] = useState<Category | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [sortBy, setSortBy] = useState<string>('featured');
+	const [searchQuery, setSearchQuery] = useState('');
 
 	useEffect(() => {
 		const loadData = async () => {
@@ -46,6 +49,13 @@ const CollectionDetail = () => {
 					.from('products')
 					.select('*')
 					.eq('category', categoryNameFormatted);
+
+				// Apply search filter
+				if (searchQuery.trim()) {
+					query = query.or(
+						`name.ilike.%${searchQuery}%,category.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`
+					);
+				}
 
 				// Apply sorting
 				switch (sortBy) {
@@ -81,7 +91,7 @@ const CollectionDetail = () => {
 		};
 
 		loadData();
-	}, [categoryName, sortBy]);
+	}, [categoryName, sortBy, searchQuery]);
 
 	return (
 		<div className="min-h-screen bg-background">
@@ -106,12 +116,22 @@ const CollectionDetail = () => {
 					</div>
 				</section>
 
-				{/* Sort */}
+				{/* Search and Sort */}
 				<section className="py-8 border-b border-border bg-card">
 					<div className="container mx-auto px-6">
-						<div className="flex items-center justify-end gap-4">
-							<span className="text-sm font-medium text-foreground">Sort by:</span>
-							<Select value={sortBy} onValueChange={setSortBy}>
+						<div className="flex flex-col md:flex-row items-center justify-between gap-4">
+							<div className="flex items-center gap-4 w-full md:w-auto">
+								<SlidersHorizontal className="h-5 w-5 text-muted-foreground shrink-0" />
+								<ProductSearchInput
+									value={searchQuery}
+									onChange={setSearchQuery}
+									placeholder="Search in this collection..."
+									className="flex-1 md:max-w-sm"
+								/>
+							</div>
+							<div className="flex items-center gap-4">
+								<span className="text-sm font-medium text-foreground">Sort by:</span>
+								<Select value={sortBy} onValueChange={setSortBy}>
 								<SelectTrigger className="w-[180px]">
 									<SelectValue placeholder="Sort" />
 								</SelectTrigger>
@@ -122,6 +142,7 @@ const CollectionDetail = () => {
 									<SelectItem value="name">Name: A to Z</SelectItem>
 								</SelectContent>
 							</Select>
+							</div>
 						</div>
 					</div>
 				</section>
@@ -133,6 +154,10 @@ const CollectionDetail = () => {
 							<p className="text-sm text-muted-foreground">
 								{loading ? (
 									<>Loading products...</>
+								) : searchQuery ? (
+									<>
+										Showing {products.length} results for "{searchQuery}"
+									</>
 								) : (
 									<>
 										Showing {products.length} product{products.length !== 1 ? 's' : ''}
@@ -153,7 +178,7 @@ const CollectionDetail = () => {
 						) : products.length === 0 ? (
 							<div className="text-center py-16">
 								<p className="text-lg text-muted-foreground mb-4">
-									No products found in this category.
+									{searchQuery ? `No products matching "${searchQuery}" in this collection.` : 'No products found in this category.'}
 								</p>
 								<Link to="/products">
 									<Button variant="outline">View All Products</Button>

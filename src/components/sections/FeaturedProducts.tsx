@@ -1,20 +1,30 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import ProductCard from "@/components/ProductCard";
+import ProductSearchInput from "@/components/ProductSearchInput";
 import { supabase } from "@/lib/supabase";
 import type { Product } from "@/types/database";
 
 const FeaturedProducts = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     const loadProducts = async () => {
       try {
-        const { data, error } = await supabase
+        let query = supabase
           .from('products')
           .select('*')
           .order('created_at', { ascending: false });
+
+        if (searchQuery.trim()) {
+          query = query.or(
+            `name.ilike.%${searchQuery}%,category.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`
+          );
+        }
+
+        const { data, error } = await query;
 
         if (error) {
           console.error('Error loading products:', error);
@@ -32,19 +42,28 @@ const FeaturedProducts = () => {
     };
 
     loadProducts();
-  }, []);
+  }, [searchQuery]);
 
   return (
     <section className="py-12 md:py-16">
       <div className="container mx-auto px-6">
         {/* Minimal Header */}
-        <div className="text-center mb-12">
+        <div className="text-center mb-8">
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight mb-2">
             WHERE LEGIT MEETS LUXURY
           </h1>
           <p className="text-muted-foreground">
             Discover our curated collection of premium essentials, designed for those who appreciate the finer details.
           </p>
+        </div>
+
+        {/* Search */}
+        <div className="max-w-md mx-auto mb-12">
+          <ProductSearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search products..."
+          />
         </div>
         
         {/* Products Grid - Larger, more prominent */}
