@@ -19,6 +19,7 @@ export interface Product {
 	selling_price?: number | null;
 	images: string[];
 	stock: number;
+	original_stock?: number | null;
 	featured: boolean;
 	new_arrival: boolean;
 	best_seller: boolean;

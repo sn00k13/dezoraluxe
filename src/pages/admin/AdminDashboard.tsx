@@ -1714,7 +1714,8 @@ const AdminDashboard = () => {
 											<TableHead>Name</TableHead>
 											<TableHead>Category</TableHead>
 											<TableHead>Price</TableHead>
-											<TableHead>Stock</TableHead>
+											<TableHead>Original Stock</TableHead>
+											<TableHead>Current Stock</TableHead>
 											<TableHead className="text-right">Actions</TableHead>
 										</TableRow>
 									</TableHeader>
@@ -1722,7 +1723,7 @@ const AdminDashboard = () => {
 										{products.length === 0 ? (
 											<TableRow>
 												<TableCell
-													colSpan={6}
+													colSpan={8}
 													className="text-center py-8 text-muted-foreground"
 												>
 													No products found. Add your first product!
@@ -1738,6 +1739,11 @@ const AdminDashboard = () => {
 													<TableCell>{product.category}</TableCell>
 													<TableCell>
 														{formatPrice(Number(product.price))}
+													</TableCell>
+													<TableCell>
+														{product.original_stock != null
+															? product.original_stock
+															: '—'}
 													</TableCell>
 													<TableCell>{product.stock}</TableCell>
 													<TableCell className="text-right">
@@ -3676,6 +3682,17 @@ const AdminDashboard = () => {
 													selectedOrder.created_at,
 													settings.display.dateFormat
 												)}
+											</span>
+										</div>
+										<div className="flex justify-between">
+											<span className="text-muted-foreground">Timestamp:</span>
+											<span className="font-medium">
+												{new Date(
+													selectedOrder.created_at
+												).toLocaleString(undefined, {
+													dateStyle: 'medium',
+													timeStyle: 'short',
+												})}
 											</span>
 										</div>
 										{selectedOrder.payment_reference && (

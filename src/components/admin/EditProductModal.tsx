@@ -174,7 +174,7 @@ const EditProductModal = ({ product, open, onOpenChange, onSuccess }: EditProduc
 				cost_price: String(product.cost_price ?? ''),
 				selling_price: String(product.selling_price ?? product.price ?? ''),
 				discount: String(Math.max(0, Math.min(100, existingDiscount))),
-				base_stock: String(Math.max(0, product.stock ?? 0)),
+				base_stock: String(Math.max(0, product.original_stock ?? product.stock ?? 0)),
 				featured: product.featured ?? false,
 				new_arrival: product.new_arrival ?? false,
 				best_seller: product.best_seller ?? false,

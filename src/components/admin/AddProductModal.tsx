@@ -714,6 +714,7 @@ const AddProductModal = ({ open, onOpenChange, onSuccess }: AddProductModalProps
 					cost_price: parseFloat(formData.cost_price),
 					selling_price: sellingPrice,
 					stock: totalStock,
+					original_stock: totalStock,
 					images: finalImageUrls,
 					featured: formData.featured,
 					new_arrival: formData.new_arrival,

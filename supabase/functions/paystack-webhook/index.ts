@@ -178,34 +178,35 @@ serve(async (req) => {
       )
     }
 
-    // If order exists but is still pending, confirm the reservation.
+    // If order exists but is still pending, confirm (reduce stock and update order).
     if (existingOrder) {
-      const { data: confirmationResult, error: confirmationError } = await supabase.rpc(
-        'confirm_order_stock_reservations',
-        {
+      const { data: fullOrder } = await supabase
+        .from('orders')
+        .select('payment_reference, discount_code_id')
+        .eq('id', existingOrder.id)
+        .single<{ payment_reference: string | null; discount_code_id: string | null }>()
+
+      const justConfirmed = fullOrder && !fullOrder.payment_reference
+      if (justConfirmed) {
+        const { error: stockError } = await supabase.rpc('reduce_order_stock', {
           p_order_id: existingOrder.id,
-          p_payment_reference: reference,
-        }
-      )
+        })
+        if (stockError) throw stockError
 
-      if (confirmationError) {
-        throw confirmationError
-      }
+        await supabase
+          .from('orders')
+          .update({ status: 'processing', payment_reference: reference })
+          .eq('id', existingOrder.id)
 
-      if (
-        confirmationResult &&
-        typeof confirmationResult === 'object' &&
-        confirmationResult.just_confirmed === true
-      ) {
-        await maybeApplyDiscountUsage(supabase, confirmationResult.discount_code_id)
+        await maybeApplyDiscountUsage(supabase, fullOrder.discount_code_id)
       }
 
       console.log('Order updated to processing:', existingOrder.id)
       return new Response(
-        JSON.stringify({ 
-          message: 'Order updated successfully', 
+        JSON.stringify({
+          message: 'Order updated successfully',
           orderId: existingOrder.id,
-          status: 'processing'
+          status: 'processing',
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
@@ -214,13 +215,14 @@ serve(async (req) => {
     if (orderIdFromMetadata) {
       const { data: metadataOrder, error: metadataOrderError } = await supabase
         .from('orders')
-        .select('id, status, payment_reference, idempotency_key')
+        .select('id, status, payment_reference, idempotency_key, discount_code_id')
         .eq('id', orderIdFromMetadata)
         .maybeSingle<{
           id: string
           status: string
           payment_reference: string | null
           idempotency_key: string
+          discount_code_id: string | null
         }>()
 
       if (metadataOrderError) {
@@ -238,28 +240,25 @@ serve(async (req) => {
         throw new HttpError('Webhook order token did not match the stored order', 400)
       }
 
-      const { data: confirmationResult, error: confirmationError } = await supabase.rpc(
-        'confirm_order_stock_reservations',
-        {
+      const justConfirmed = !metadataOrder.payment_reference
+      if (justConfirmed) {
+        const { error: stockError } = await supabase.rpc('reduce_order_stock', {
           p_order_id: metadataOrder.id,
-          p_payment_reference: reference,
+        })
+        if (stockError) {
+          const message = stockError.message ?? 'Failed to confirm order'
+          if (/reservation|payment confirmation|stock|insufficient/i.test(message.toLowerCase())) {
+            throw new HttpError(message, 409)
+          }
+          throw stockError
         }
-      )
 
-      if (confirmationError) {
-        const message = confirmationError.message ?? 'Failed to confirm order'
-        if (/reservation|payment confirmation|stock/i.test(message)) {
-          throw new HttpError(message, 409)
-        }
-        throw confirmationError
-      }
+        await supabase
+          .from('orders')
+          .update({ status: 'processing', payment_reference: reference })
+          .eq('id', metadataOrder.id)
 
-      if (
-        confirmationResult &&
-        typeof confirmationResult === 'object' &&
-        confirmationResult.just_confirmed === true
-      ) {
-        await maybeApplyDiscountUsage(supabase, confirmationResult.discount_code_id)
+        await maybeApplyDiscountUsage(supabase, metadataOrder.discount_code_id)
       }
 
       return new Response(

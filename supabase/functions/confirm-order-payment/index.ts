@@ -59,7 +59,7 @@ serve(async (req) => {
 
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id, order_number, status, idempotency_key")
+      .select("id, order_number, status, idempotency_key, payment_reference, discount_code_id")
       .eq("id", payload.orderId)
       .eq("idempotency_key", payload.idempotencyKey)
       .maybeSingle<{
@@ -67,6 +67,8 @@ serve(async (req) => {
         order_number: string;
         status: string;
         idempotency_key: string;
+        payment_reference: string | null;
+        discount_code_id: string | null;
       }>();
 
     if (orderError) {
@@ -77,28 +79,36 @@ serve(async (req) => {
       throw new HttpError("Order not found for confirmation", 404);
     }
 
-    const { data: confirmationResult, error: confirmationError } = await supabase.rpc(
-      "confirm_order_stock_reservations",
-      {
+    // Idempotent: if already confirmed, return success without re-processing
+    const justConfirmed = !order.payment_reference;
+    if (justConfirmed) {
+      // Reduce stock directly (replaces confirm_order_stock_reservations RPC)
+      const { error: stockError } = await supabase.rpc("reduce_order_stock", {
         p_order_id: payload.orderId,
-        p_payment_reference: payload.paymentReference,
-      },
-    );
+      });
 
-    if (confirmationError) {
-      const message = confirmationError.message ?? "Failed to confirm order";
-      if (/reservation|payment confirmation|stock/i.test(message)) {
-        throw new HttpError(message, 409);
+      if (stockError) {
+        const message = stockError.message ?? "Failed to reduce stock";
+        if (/reservation|stock|insufficient/i.test(message.toLowerCase())) {
+          throw new HttpError(message, 409);
+        }
+        throw stockError;
       }
-      throw confirmationError;
-    }
 
-    if (
-      confirmationResult &&
-      typeof confirmationResult === "object" &&
-      confirmationResult.just_confirmed === true
-    ) {
-      await maybeApplyDiscountUsage(supabase, confirmationResult.discount_code_id);
+      // Update order status and payment reference
+      const { error: updateError } = await supabase
+        .from("orders")
+        .update({
+          status: "processing",
+          payment_reference: payload.paymentReference,
+        })
+        .eq("id", payload.orderId);
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      await maybeApplyDiscountUsage(supabase, order.discount_code_id);
     }
 
     const { data: updatedOrder, error: updatedOrderError } = await supabase
@@ -119,10 +129,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         order: updatedOrder,
-        justConfirmed:
-          confirmationResult && typeof confirmationResult === "object"
-            ? confirmationResult.just_confirmed === true
-            : false,
+        justConfirmed,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
