@@ -36,14 +36,11 @@ import { DiscountCode, ShippingAddress } from '@/types/database';
 import { toast } from 'sonner';
 import { getOptimizedCloudinaryUrl } from '@/lib/cloudinary';
 import { trackAnalyticsEvent } from '@/lib/analytics';
-
-interface DeliveryMethod {
-	id: string;
-	name: string;
-	company: string;
-	price: number;
-	estimatedDays: string;
-}
+import {
+	type DeliveryMethodCheckout,
+	FALLBACK_DELIVERY_METHODS,
+	fetchDeliveryOptionsForCheckout,
+} from '@/lib/deliveryOptions';
 
 interface ValidatedDiscountCode extends DiscountCode {
 	validation_error: string | null;
@@ -105,37 +102,6 @@ const clearGuestCheckoutDraft = () => {
 	}
 };
 
-const deliveryMethods: DeliveryMethod[] = [
-	{
-		id: 'gig',
-		name: 'GIG Logistics',
-		company: 'GIG Logistics',
-		price: 8000,
-		estimatedDays: 'Standard delivery',
-	},
-	{
-		id: 'guo',
-		name: 'GUO Logistics',
-		company: 'GUO Logistics',
-		price: 4000,
-		estimatedDays: 'Standard delivery',
-	},
-	{
-		id: 'abuja',
-		name: 'Locations within Abuja',
-		company: 'Local Delivery',
-		price: 3000,
-		estimatedDays: 'Within Abuja',
-	},
-	{
-		id: 'pickup',
-		name: 'Pick-Up (Free)',
-		company: 'Store Pickup',
-		price: 0,
-		estimatedDays: 'available within Abuja',
-	},
-];
-
 const Checkout = () => {
 	const navigate = useNavigate();
 	const location = useLocation();
@@ -170,7 +136,12 @@ const Checkout = () => {
 		zipCode: '',
 		country: 'Nigeria',
 	});
-	const [selectedDelivery, setSelectedDelivery] = useState<string>('gig');
+	const [deliveryMethods, setDeliveryMethods] = useState<DeliveryMethodCheckout[]>(
+		FALLBACK_DELIVERY_METHODS
+	);
+	const [selectedDelivery, setSelectedDelivery] = useState<string>(
+		FALLBACK_DELIVERY_METHODS[0]?.id ?? ''
+	);
 	const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 	const [savedAddresses, setSavedAddresses] = useState<ShippingAddress[]>([]);
 	const [selectedAddressId, setSelectedAddressId] = useState<string | null>(
@@ -233,6 +204,21 @@ const Checkout = () => {
 			clearGuestCheckoutDraft();
 		}
 	}, [user]);
+
+	// Delivery options from Supabase (admin dashboard); falls back if unavailable
+	useEffect(() => {
+		void (async () => {
+			const opts = await fetchDeliveryOptionsForCheckout();
+			setDeliveryMethods(opts);
+		})();
+	}, []);
+
+	useEffect(() => {
+		if (deliveryMethods.length === 0) return;
+		if (!deliveryMethods.some((m) => m.id === selectedDelivery)) {
+			setSelectedDelivery(deliveryMethods[0].id);
+		}
+	}, [deliveryMethods, selectedDelivery]);
 
 	// Load saved addresses
 	const loadSavedAddresses = async () => {

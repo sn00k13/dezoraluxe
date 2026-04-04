@@ -65,6 +65,7 @@ import {
 	Menu,
 	TicketPercent,
 	RefreshCw,
+	Truck,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { signOutAndClearSession } from '@/lib/auth';
@@ -79,6 +80,7 @@ import AddProductModal from '@/components/admin/AddProductModal';
 import EditProductModal from '@/components/admin/EditProductModal';
 import AddUserModal from '@/components/admin/AddUserModal';
 import DiscountCodesManager from '@/components/admin/DiscountCodesManager';
+import DeliveryOptionsManager from '@/components/admin/DeliveryOptionsManager';
 import {
 	saveSettings,
 	loadSettings,
@@ -1397,6 +1399,7 @@ const AdminDashboard = () => {
 		{ id: 'products', label: 'Products', icon: Package },
 		{ id: 'orders', label: 'Orders', icon: ShoppingCart },
 		{ id: 'discounts', label: 'Discount Codes', icon: TicketPercent },
+		{ id: 'delivery', label: 'Delivery', icon: Truck },
 		{ id: 'analytics', label: 'Analytics', icon: BarChart3 },
 		{ id: 'users', label: 'Users', icon: Users },
 		{ id: 'subscribers', label: 'Subscribers', icon: Mail },
@@ -1906,6 +1909,8 @@ const AdminDashboard = () => {
 				)}
 
 				{activeTab === 'discounts' && <DiscountCodesManager />}
+
+				{activeTab === 'delivery' && <DeliveryOptionsManager />}
 
 				{activeTab === 'users' && (
 					<div className="space-y-8">

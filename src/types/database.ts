@@ -146,6 +146,18 @@ export interface ShippingAddress {
 	updated_at: string;
 }
 
+export interface DeliveryOption {
+	id: string;
+	name: string;
+	company: string;
+	price: number;
+	estimated_days: string;
+	sort_order: number;
+	is_active: boolean;
+	created_at: string;
+	updated_at: string;
+}
+
 export interface DiscountCode {
 	id: string;
 	code: string;
