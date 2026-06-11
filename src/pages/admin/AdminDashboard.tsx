@@ -807,6 +807,17 @@ const AdminDashboard = () => {
 		newStatus: Order['status']
 	) => {
 		try {
+			const currentOrder = orders.find((o) => o.id === orderId) ?? selectedOrder;
+			const paidStatuses: Order['status'][] = ['processing', 'shipped', 'delivered'];
+			const wasPaid = currentOrder && paidStatuses.includes(currentOrder.status);
+
+			if (newStatus === 'cancelled' && wasPaid) {
+				const { error: stockError } = await supabase.rpc('restore_order_stock', {
+					p_order_id: orderId,
+				});
+				if (stockError) throw stockError;
+			}
+
 			const { error } = await supabase
 				.from('orders')
 				.update({ status: newStatus, updated_at: new Date().toISOString() })
@@ -925,6 +936,156 @@ const AdminDashboard = () => {
 
 	const formatPrice = (price: number) => {
 		return formatCurrency(price, settings.store.currency);
+	};
+
+	const downloadCsv = (filename: string, rows: (string | number | null | undefined)[][]) => {
+		const csv = rows
+			.map((row) => row.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
+			.join('\n');
+		const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = filename;
+		link.click();
+		URL.revokeObjectURL(url);
+	};
+
+	const handleExportInventory = async () => {
+		try {
+			const [{ data: allProducts, error: prodError }, { data: allVariants, error: varError }] =
+				await Promise.all([
+					supabase.from('products').select('*').order('name', { ascending: true }),
+					supabase.from('product_variants').select('*, products(name)').order('product_id', { ascending: true }),
+				]);
+
+			if (prodError) throw prodError;
+			if (varError) throw varError;
+
+			const rows: (string | number | null | undefined)[][] = [
+				['=== PRODUCTS ==='],
+				['ID', 'Name', 'Category', 'Collection', 'Price', 'Cost Price', 'Current Stock', 'Original Stock', 'On Sale', 'Featured', 'New Arrival', 'Best Seller', 'Created At'],
+			];
+
+			for (const p of allProducts ?? []) {
+				rows.push([
+					p.id, p.name, p.category, p.collection,
+					p.price, p.cost_price ?? '', p.stock, p.original_stock ?? '',
+					p.on_sale ? 'Yes' : 'No',
+					p.featured ? 'Yes' : 'No',
+					p.new_arrival ? 'Yes' : 'No',
+					p.best_seller ? 'Yes' : 'No',
+					p.created_at,
+				]);
+			}
+
+			rows.push([]);
+			rows.push(['=== PRODUCT VARIANTS ===']);
+			rows.push(['Variant ID', 'Product ID', 'Product Name', 'Color', 'Size', 'SKU', 'Variant Price', 'Current Stock', 'Created At']);
+
+			for (const v of allVariants ?? []) {
+				rows.push([
+					v.id, v.product_id, (v.products as { name: string } | null)?.name ?? '',
+					v.color, v.size, v.sku ?? '', v.price ?? '', v.stock, v.created_at,
+				]);
+			}
+
+			downloadCsv(`inventory-snapshot-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+			toast.success('Inventory report downloaded');
+		} catch (error) {
+			console.error('Export inventory error:', error);
+			toast.error('Failed to export inventory');
+		}
+	};
+
+	const handleExportOrders = async () => {
+		try {
+			const { data: allOrders, error: ordErr } = await supabase
+				.from('orders')
+				.select('*')
+				.order('created_at', { ascending: false });
+
+			if (ordErr) throw ordErr;
+
+			const orderIds = (allOrders ?? []).map((o) => o.id);
+			const { data: allItems, error: itemErr } = await supabase
+				.from('order_items')
+				.select('*, products(name)')
+				.in('order_id', orderIds.length > 0 ? orderIds : ['00000000-0000-0000-0000-000000000000']);
+
+			if (itemErr) throw itemErr;
+
+			const itemsByOrder = new Map<string, typeof allItems>();
+			for (const item of allItems ?? []) {
+				if (!itemsByOrder.has(item.order_id)) itemsByOrder.set(item.order_id, []);
+				itemsByOrder.get(item.order_id)!.push(item);
+			}
+
+			const rows: (string | number | null | undefined)[][] = [
+				[
+					'Order Number', 'Order Date', 'Status', 'Customer Name', 'Customer Email',
+					'Customer Phone', 'Shipping Address', 'City', 'State', 'Country',
+					'Payment Reference', 'Delivery Method', 'Discount Code', 'Discount Amount',
+					'Pre-Discount Total', 'Total Amount',
+					'Product ID', 'Product Name', 'Variant ID', 'Color', 'Size', 'Qty', 'Item Price',
+				],
+			];
+
+			for (const order of allOrders ?? []) {
+				const addr = typeof order.shipping_address === 'object' && order.shipping_address
+					? order.shipping_address as { name?: string; address?: string; city?: string; state?: string; country?: string }
+					: {};
+				const items = itemsByOrder.get(order.id) ?? [];
+
+				if (items.length === 0) {
+					rows.push([
+						order.order_number, order.created_at, order.status,
+						addr.name ?? '', getCustomerEmail(order), getCustomerPhone(order),
+						addr.address ?? '', addr.city ?? '', addr.state ?? '', addr.country ?? '',
+						order.payment_reference ?? '', order.delivery_method ?? '',
+						order.discount_code ?? '', order.discount_amount ?? '',
+						order.pre_discount_total ?? '', order.total_amount,
+						'', '', '', '', '', '', '',
+					]);
+				} else {
+					for (const item of items) {
+						rows.push([
+							order.order_number, order.created_at, order.status,
+							addr.name ?? '', getCustomerEmail(order), getCustomerPhone(order),
+							addr.address ?? '', addr.city ?? '', addr.state ?? '', addr.country ?? '',
+							order.payment_reference ?? '', order.delivery_method ?? '',
+							order.discount_code ?? '', order.discount_amount ?? '',
+							order.pre_discount_total ?? '', order.total_amount,
+							item.product_id,
+							(item.products as { name: string } | null)?.name ?? '',
+							item.variant_id ?? '', item.selected_color ?? '', item.selected_size ?? '',
+							item.quantity, item.price,
+						]);
+					}
+				}
+			}
+
+			downloadCsv(`orders-report-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+			toast.success('Orders report downloaded');
+		} catch (error) {
+			console.error('Export orders error:', error);
+			toast.error('Failed to export orders');
+		}
+	};
+
+	const handleExportCustomers = () => {
+		if (users.length === 0) {
+			toast.error('No customer data loaded. Open the Users tab first.');
+			return;
+		}
+		const rows: (string | number | null | undefined)[][] = [
+			['ID', 'Full Name', 'Email', 'Phone', 'Role', 'Joined At'],
+		];
+		for (const u of users) {
+			rows.push([u.id, u.full_name ?? '', u.email ?? '', u.phone ?? '', u.admin_role ?? 'customer', u.created_at]);
+		}
+		downloadCsv(`customers-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+		toast.success('Customers report downloaded');
 	};
 
 	const analyticsRange = useMemo(() => {
@@ -1702,10 +1863,16 @@ const AdminDashboard = () => {
 									Manage your product catalog
 								</p>
 							</div>
-							<Button variant="hero" onClick={() => setIsAddProductOpen(true)} className="w-full sm:w-auto shrink-0">
-								<Plus className="mr-2 h-4 w-4" />
-								Add Product
-							</Button>
+							<div className="flex gap-2 flex-wrap">
+								<Button variant="outline" onClick={handleExportInventory} className="w-full sm:w-auto shrink-0">
+									<Download className="mr-2 h-4 w-4" />
+									Export Inventory
+								</Button>
+								<Button variant="hero" onClick={() => setIsAddProductOpen(true)} className="w-full sm:w-auto shrink-0">
+									<Plus className="mr-2 h-4 w-4" />
+									Add Product
+								</Button>
+							</div>
 						</div>
 
 						<Card className="border-border">
@@ -1794,11 +1961,17 @@ const AdminDashboard = () => {
 
 				{activeTab === 'orders' && (
 					<div className="space-y-8">
-						<div>
-							<h2 className="text-2xl font-bold mb-2 sm:text-3xl">Orders</h2>
-							<p className="text-muted-foreground text-sm sm:text-base">
-								View and manage customer orders
-							</p>
+						<div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+							<div>
+								<h2 className="text-2xl font-bold mb-2 sm:text-3xl">Orders</h2>
+								<p className="text-muted-foreground text-sm sm:text-base">
+									View and manage customer orders
+								</p>
+							</div>
+							<Button variant="outline" onClick={handleExportOrders} className="w-full sm:w-auto shrink-0">
+								<Download className="mr-2 h-4 w-4" />
+								Export Orders
+							</Button>
 						</div>
 
 						<Card className="border-border">
@@ -1919,14 +2092,20 @@ const AdminDashboard = () => {
 								<h2 className="text-2xl font-bold mb-2 sm:text-3xl">Users</h2>
 								<p className="text-muted-foreground text-sm sm:text-base">Manage user accounts</p>
 							</div>
-							<Button
-								variant="hero"
-								onClick={() => setIsAddUserOpen(true)}
-								className="w-full sm:w-auto shrink-0"
-							>
-								<Plus className="mr-2 h-4 w-4" />
-								Add User
-							</Button>
+							<div className="flex gap-2 flex-wrap">
+								<Button variant="outline" onClick={handleExportCustomers} className="w-full sm:w-auto shrink-0">
+									<Download className="mr-2 h-4 w-4" />
+									Export Customers
+								</Button>
+								<Button
+									variant="hero"
+									onClick={() => setIsAddUserOpen(true)}
+									className="w-full sm:w-auto shrink-0"
+								>
+									<Plus className="mr-2 h-4 w-4" />
+									Add User
+								</Button>
+							</div>
 						</div>
 
 						<Card className="border-border">
