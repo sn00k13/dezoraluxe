@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { orderConfirmedTemplate, sendEmail, type OrderEmailData, type OrderItem } from '../_shared/resend.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -38,6 +39,66 @@ const getMetadataField = (
   variableName: string
 ) => {
   return customFields?.find((field) => field.variable_name === variableName)?.value?.trim() ?? null
+}
+
+async function sendOrderConfirmedEmail(
+  supabase: ReturnType<typeof createClient>,
+  orderId: string,
+): Promise<void> {
+  const { data: order } = await supabase
+    .from('orders')
+    .select('order_number, customer_email, shipping_address, total_amount, discount_amount, discount_code, delivery_method')
+    .eq('id', orderId)
+    .single<{
+      order_number: string
+      customer_email: string | null
+      shipping_address: { name: string; address: string; city: string; state: string; country: string }
+      total_amount: number
+      discount_amount: number | null
+      discount_code: string | null
+      delivery_method: string | null
+    }>()
+
+  if (!order?.customer_email) return
+
+  const { data: rawItems } = await supabase
+    .from('order_items')
+    .select('product_id, quantity, price, selected_color, selected_size')
+    .eq('order_id', orderId)
+
+  const productIds = (rawItems ?? []).map((i) => i.product_id)
+  const { data: products } = productIds.length > 0
+    ? await supabase.from('products').select('id, name').in('id', productIds)
+    : { data: [] }
+
+  const nameMap: Record<string, string> = {}
+  for (const p of products ?? []) nameMap[p.id] = p.name
+
+  const items: OrderItem[] = (rawItems ?? []).map((i) => ({
+    name: nameMap[i.product_id] ?? 'Product',
+    quantity: i.quantity,
+    price: i.price,
+    color: i.selected_color,
+    size: i.selected_size,
+  }))
+
+  const emailData: OrderEmailData = {
+    orderNumber: order.order_number,
+    customerName: order.shipping_address?.name ?? 'Customer',
+    customerEmail: order.customer_email,
+    items,
+    discountCode: order.discount_code,
+    discountAmount: order.discount_amount ?? 0,
+    deliveryMethod: order.delivery_method,
+    total: order.total_amount,
+    shippingAddress: order.shipping_address,
+  }
+
+  await sendEmail(
+    order.customer_email,
+    `Order Confirmed — ${order.order_number}`,
+    orderConfirmedTemplate(emailData),
+  )
 }
 
 const maybeApplyDiscountUsage = async (
@@ -199,6 +260,10 @@ serve(async (req) => {
           .eq('id', existingOrder.id)
 
         await maybeApplyDiscountUsage(supabase, fullOrder.discount_code_id)
+
+        sendOrderConfirmedEmail(supabase, existingOrder.id).catch((err) =>
+          console.error('Order confirmed email failed (webhook path 1):', err)
+        )
       }
 
       console.log('Order updated to processing:', existingOrder.id)
@@ -259,6 +324,10 @@ serve(async (req) => {
           .eq('id', metadataOrder.id)
 
         await maybeApplyDiscountUsage(supabase, metadataOrder.discount_code_id)
+
+        sendOrderConfirmedEmail(supabase, metadataOrder.id).catch((err) =>
+          console.error('Order confirmed email failed (webhook path 2):', err)
+        )
       }
 
       return new Response(

@@ -807,21 +807,9 @@ const AdminDashboard = () => {
 		newStatus: Order['status']
 	) => {
 		try {
-			const currentOrder = orders.find((o) => o.id === orderId) ?? selectedOrder;
-			const paidStatuses: Order['status'][] = ['processing', 'shipped', 'delivered'];
-			const wasPaid = currentOrder && paidStatuses.includes(currentOrder.status);
-
-			if (newStatus === 'cancelled' && wasPaid) {
-				const { error: stockError } = await supabase.rpc('restore_order_stock', {
-					p_order_id: orderId,
-				});
-				if (stockError) throw stockError;
-			}
-
-			const { error } = await supabase
-				.from('orders')
-				.update({ status: newStatus, updated_at: new Date().toISOString() })
-				.eq('id', orderId);
+			const { error } = await supabase.functions.invoke('update-order-status', {
+				body: { orderId, newStatus },
+			});
 
 			if (error) throw error;
 
